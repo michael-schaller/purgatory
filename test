@@ -1,0 +1,21 @@
+#!/bin/bash
+readonly green='\e[0;32m'
+readonly red='\e[0;31m'
+readonly white='\e[1;37m'
+readonly reset='\e[0m'
+
+# Run tests and do coverage analysis (including cleanup)
+rm -f .coverage
+python3 -B $(which nose2-3) --config nose2.cfg --no-user-config
+exitcode=$?
+rm -f .coverage
+
+# Inform user
+echo -e "Run '${white}xdg-open file:///tmp/purgatory-htmlcov/index.html${reset}' to open coverage results in a browser."
+if [[ $exitcode -ne 0 ]]; then
+  echo ""
+  echo -e "Tests ${red}FAILED${reset} with exit code ${red}${exitcode}${reset}!" 1>&2
+else
+  echo -e "Tests ${green}PASSED${reset}."
+fi
+exit $exitcode

@@ -1,0 +1,8 @@
+MS:
+* Package the code for Debian/Ubuntu.
+  Build-Dependencies:
+    python3, python3-nose2, python3-nose2-cov, python3-flake8
+  Dependencies:
+    python3, python3-apt
+
+* Increase test coverage to 100% and set fail_under to 100% in coverage.cfg.

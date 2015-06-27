@@ -1,0 +1,17 @@
+#!/bin/bash
+readonly green='\e[0;32m'
+readonly red='\e[0;31m'
+readonly reset='\e[0m'
+
+# Run the flake8 linter (pep8 + pyflakes).
+python3 -Bm flake8 . --show-source --max-line-length=80
+exitcode=$?
+
+# Inform user
+if [[ $exitcode -ne 0 ]]; then
+  echo ""
+  echo -e "Linters ${red}FAILED${reset} with exit code ${red}${exitcode}${reset}!" 1>&2
+else
+  echo -e "Linters ${green}PASSED${reset}."
+fi
+exit $exitcode
