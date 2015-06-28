@@ -1,17 +1,32 @@
 #!/bin/bash
 readonly green='\e[0;32m'
 readonly red='\e[0;31m'
+readonly white='\e[1;37m'
 readonly reset='\e[0m'
 
-# Run the flake8 linter (pep8 + pyflakes).
+# Run the flake8 linter (pep8 + pyflakes). The flake8 linter takes precedence
+# over all other linters. If linters disagree then flake8 is the authorative
+# linter and the other linter needs to be reconfigured.
 python3 -Bm flake8 . --show-source --max-line-length=80
+exitcode=$?
+echo ""
+
+# Inform user
+if [[ $exitcode -ne 0 ]]; then
+  echo -e "flake8 linter ${red}FAILED${reset} with exit code ${red}${exitcode}${reset}!" 1>&2
+  exit $exitcode
+fi
+
+# Run the pylint linter. The pylint linter should be the last linter to run as
+# it is very pedantic.
+pylint3 --rcfile pylint.cfg purgatory
 exitcode=$?
 
 # Inform user
 if [[ $exitcode -ne 0 ]]; then
   echo ""
-  echo -e "Linters ${red}FAILED${reset} with exit code ${red}${exitcode}${reset}!" 1>&2
-else
-  echo -e "Linters ${green}PASSED${reset}."
+  echo -e "pylint linter ${red}FAILED${reset} with exit code ${red}${exitcode}${reset}!" 1>&2
+  echo -e "Run '${white}pylint3 --help-msg=<msg-id>${reset}' to get more details on an issue."
+  exit $exitcode
 fi
-exit $exitcode
+echo -e "Linters ${green}PASSED${reset}."
