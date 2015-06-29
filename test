@@ -5,15 +5,17 @@ readonly white='\e[1;37m'
 readonly reset='\e[0m'
 
 # Run tests and do coverage analysis (including cleanup)
+echo ""
+echo -e "Running ${white}nose2${reset} ..."
 rm -f .coverage
 python3 -B $(which nose2-3) --config nose2.cfg --no-user-config
 exitcode=$?
 rm -f .coverage
 
 # Inform user
+echo ""
 echo -e "Run '${white}xdg-open file:///tmp/purgatory-htmlcov/index.html${reset}' to open coverage results in a browser."
 if [[ $exitcode -ne 0 ]]; then
-  echo ""
   echo -e "Tests ${red}FAILED${reset} with exit code ${red}${exitcode}${reset}!" 1>&2
 else
   echo -e "Tests ${green}PASSED${reset}."
