@@ -40,6 +40,6 @@ def configure_root_logger():
         for handler in root_logger.handlers:
             handler.setFormatter(formatter)
 
-    except:
+    except:  # pragma: no cover
         print(traceback.format_exc(), file=sys.stderr)
         raise

@@ -7,8 +7,8 @@ MS:
     python3,
     python3-apt,
     python3-astroid >= 1.3.6,  # 1.2.1 crashes on importing importlib.
-    python3-nose2,
-    python3-nose2-cov,
+    python3-nose2 > 0.5.0,  # Vivid's version can't collect import time.
+    python3-nose2-cov > 1.0a4,  # Vivid's version can't collect import time.
     python3-flake8
   Dependencies:
     python3,
@@ -18,6 +18,8 @@ MS:
   I don't know if this is even possible with the monkey-patch module for python-
   apt but I can certainly try. fail_under is supported since python3-coverage
   3.7.2 and for an instance Ubuntu 15.04 doesn't support it.
+  Furthermore nose2 can't collect import time coverage data before this commit:
+  https://github.com/nose-devs/nose2/commit/79307722e58a6a5c62f1b8b06afd375c58e84a2a
 
 * Automatically generate documentation via Sphinx.
 

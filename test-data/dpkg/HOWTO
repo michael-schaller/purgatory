@@ -1,0 +1,9 @@
+Example how to get clean dpkg status database:
+----------------------------------------------
+mkdir /tmp/debootstrap
+cd /tmp/debootstrap
+sudo apt-get install debian-archive-keyring
+sudo debootstrap --arch=amd64 --variant=minbase jessie jessie http://httpredir.debian.org/debian
+gzip --stdout --best jessie/var/lib/dpkg/status > jessie-amd64-minbase-dpkg-status-db.gz
+cp jessie-amd64-minbase-dpkg-status-db.gz purgatory/test-data/dpkg/
+echo 'number of installed packages:' ; sudo chroot jessie dpkg -l | egrep '^i' | wc -l

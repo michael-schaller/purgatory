@@ -12,29 +12,11 @@ import sys
 
 import pkg_resources
 
+import purgatory.mppa_patches as patches
+
 
 _APT_MODULE_NAMES = ["apt", "apt_pkg"]
-
-
-# ----------------------- Monkey-patches for python-apt -----------------------
-
-
-def _add_python_apt_version(modules):
-    """Adds the python-apt version to apt_pkg.
-
-    TODO: Add this functionality to the upstream version of python-apt.
-    """
-    apt_pkg = modules["apt_pkg"]
-    if not hasattr(apt_pkg, "PY_VERSION"):
-        dist = pkg_resources.get_distribution("python-apt")
-        version = dist.version  # pylint: disable=maybe-no-member
-        setattr(apt_pkg, "PY_VERSION", version)
-        logging.debug("Patch: Added python-apt version as apt_pkg.PY_VERSION")
-    logging.debug("Apt version: %s", apt_pkg.VERSION)
-    logging.debug("python-apt version: %s", apt_pkg.PY_VERSION)
-
-
-# ---------------------- Monkey-patch code of Purgatory -----------------------
+_PYTHON_APT_VERSION = pkg_resources.get_distribution("python-apt").version  # noqa  # pylint: disable=maybe-no-member
 
 
 class ImportedButUnpatchedError(Exception):
@@ -64,13 +46,17 @@ def _ensure_modules_are_imported():
     for module_name in _APT_MODULE_NAMES:
         module = importlib.import_module(module_name)
         modules[module_name] = module
+
+    logging.debug("Apt version: %s", modules["apt_pkg"].VERSION)
+    logging.debug("python-apt version: %s", _PYTHON_APT_VERSION)
+
     return modules
 
 
 def _apply_monkey_patches(modules):
     """Applies the monkey-patches to python-apt."""
     logging.debug("Applying monkey-patches to python-apt ...")
-    _add_python_apt_version(modules)
+    patches.add_cache_installed_filter(modules, _PYTHON_APT_VERSION)
 
 
 def _mark_as_monkey_patched(modules):

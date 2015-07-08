@@ -4,8 +4,8 @@ import importlib
 import unittest
 
 import purgatory.logging
-import purgatory.mppa
 
+import purgatory.mppa
 import apt  # Always needs to be imported after purgatory.mppa.
 
 
