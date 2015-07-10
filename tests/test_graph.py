@@ -168,7 +168,7 @@ class TestGraph(unittest.TestCase):
 
         Graph(init_nodes_and_edges)
 
-    def test_node_incoming_edges(self):
+    def test_node_incoming_edges_and_nodes(self):
         nf1 = Node()
         nf2 = Node()
         nt = Node()
@@ -190,6 +190,11 @@ class TestGraph(unittest.TestCase):
         self.assertTrue(e1 in ies)
         self.assertTrue(e2 in ies)
         self.assertEquals(len(ies), 2)
+
+        ins = nt.incoming_nodes
+        self.assertTrue(nf1 in ins)
+        self.assertTrue(nf2 in ins)
+        self.assertEquals(len(ins), 2)
 
     def test_node_incoming_edges_empty(self):
         nt = Node()
@@ -214,7 +219,7 @@ class TestGraph(unittest.TestCase):
         with self.assertRaises(purgatory.graph.DeletedMemberInUseError):
             nt.incoming_edges  # pylint: disable=pointless-statement
 
-    def test_node_outgoing_edges(self):
+    def test_node_outgoing_edges_and_nodes(self):
         nf = Node()
         nt1 = Node()
         nt2 = Node()
@@ -236,6 +241,11 @@ class TestGraph(unittest.TestCase):
         self.assertTrue(e1 in oes)
         self.assertTrue(e2 in oes)
         self.assertEquals(len(oes), 2)
+
+        ons = nf.outgoing_nodes
+        self.assertTrue(nt1 in ons)
+        self.assertTrue(nt2 in ons)
+        self.assertEquals(len(ons), 2)
 
     def test_node_outgoing_edges_empty(self):
         nf = Node()
@@ -463,7 +473,7 @@ class TestGraph(unittest.TestCase):
             graph._add_node(nt)
             graph._add_edge(e)
 
-        graph = Graph(init_nodes_and_edges)
+        Graph(init_nodes_and_edges)
         with self.assertRaises(AttributeError):
             nt.add_incoming_edge(e)
 
@@ -477,6 +487,6 @@ class TestGraph(unittest.TestCase):
             graph._add_node(nt)
             graph._add_edge(e)
 
-        graph = Graph(init_nodes_and_edges)
+        Graph(init_nodes_and_edges)
         with self.assertRaises(AttributeError):
             nf.add_outgoing_edge(e)

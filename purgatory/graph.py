@@ -238,7 +238,7 @@ class Node(Member):  # pylint: disable=abstract-method
 
     @property
     def incoming_edges(self):
-        """Returns set of all incoming edges.
+        """Returns set of all directly incoming edges.
 
         The set is independent of the edge probability but honors the deleted
         state.
@@ -252,8 +252,21 @@ class Node(Member):  # pylint: disable=abstract-method
         return frozenset(edges)
 
     @property
+    def incoming_nodes(self):
+        """Returns set of all directly incoming nodes.
+
+        The set is independent of the edge probability but honors the deleted
+        state.
+        """
+        nodes = set()
+        for edge in self.incoming_edges:
+            # Node can't be deleted as edge isn't deleted either.
+            nodes.add(edge.from_node)
+        return frozenset(nodes)
+
+    @property
     def outgoing_edges(self):
-        """Returns set of all outgoing edges.
+        """Returns set of all directly outgoing edges.
 
         The set is independent of the edge probability but honors the deleted
         state.
@@ -265,6 +278,19 @@ class Node(Member):  # pylint: disable=abstract-method
             if not edge.deleted:
                 edges.add(edge)
         return frozenset(edges)
+
+    @property
+    def outgoing_nodes(self):
+        """Returns set of all directly outgoing nodes.
+
+        The set is independent of the edge probability but honors the deleted
+        state.
+        """
+        nodes = set()
+        for edge in self.outgoing_edges:
+            # Node can't be deleted as edge isn't deleted either.
+            nodes.add(edge.to_node)
+        return frozenset(nodes)
 
     def add_incoming_edge(self, edge):
         """Registers an edge as incoming edge with this node.
