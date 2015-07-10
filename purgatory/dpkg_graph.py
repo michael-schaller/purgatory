@@ -10,9 +10,6 @@ Simplifications:
 * Only PreDepends, Depends and Recommends dependency types.  The dependency are
   collapsed as much as possible.
 * Only installed target versions and their respective packages.
-
-This code uses the python-apt bindings to get the needed data from Apt as there
-are no dpkg bindings.
 """
 
 import logging

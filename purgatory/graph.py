@@ -6,9 +6,6 @@ import types
 import purgatory.error
 
 
-EMPTY_FROZEN_SET = frozenset()
-
-
 class GraphError(purgatory.error.PurgatoryError):
     """Base class for all graph related errors."""
 
@@ -58,6 +55,14 @@ class DeletedMemberInUseError(GraphError):
         super().__init__(msg)
 
 
+class NodeIsNotPartOfEdgeError(GraphError):
+    """Raised if a node isn't part of an edge but should be."""
+    def __init__(self, node, edge):
+        msg = "Node '%s' isn't part of edge '%s' but should be!" % (
+            node, edge)
+        super().__init__(msg)
+
+
 class Graph(abc.ABC):
     """Abstract Graph base class with nodes and directed edges.
 
@@ -71,55 +76,24 @@ class Graph(abc.ABC):
         self.__nodes = {}  # uid:node
         self.__edges = {}  # uid:edge
 
-        # Caches
-        self.__node_to_incoming_edges = None  # node.uid:set(incoming edges):
-        self.__node_to_outgoing_edges = None  # node.uid:set(incoming edges)
-
-        # Init and freeze
+        # Init
         super().__init__()
         self._init_nodes_and_edges()
+
+        # Freeze
         self.__nodes = types.MappingProxyType(self.__nodes)
         self.__edges = types.MappingProxyType(self.__edges)
-        self._init_node_to_incoming_edges()
-        self._init_node_to_outgoing_edges()
+        self.__freeze_nodes_incoming_outgoing_edges()
 
     @abc.abstractmethod
     def _init_nodes_and_edges(self):
         """Initializes the nodes of the graph."""
 
-    def _init_node_to_incoming_edges(self):
-        """Initializes the node to incoming edges cache."""
-        self.__node_to_incoming_edges = {}
-        for edge in self.__edges.values():
-            node_uid = edge.to_node.uid
-            incoming_edges = self.__node_to_incoming_edges.get(node_uid)
-            if not incoming_edges:
-                incoming_edges = set()
-                self.__node_to_incoming_edges[node_uid] = incoming_edges
-            incoming_edges.add(edge)
-
-        # Freeze
-        for node_uid, edges in self.__node_to_incoming_edges.items():
-            self.__node_to_incoming_edges[node_uid] = frozenset(edges)
-        self.__node_to_incoming_edges = types.MappingProxyType(
-            self.__node_to_incoming_edges)
-
-    def _init_node_to_outgoing_edges(self):
-        """Initializes the node to outgoing edges cache."""
-        self.__node_to_outgoing_edges = {}
-        for edge in self.__edges.values():
-            node_uid = edge.from_node.uid
-            outgoing_edges = self.__node_to_outgoing_edges.get(node_uid)
-            if not outgoing_edges:
-                outgoing_edges = set()
-                self.__node_to_outgoing_edges[node_uid] = outgoing_edges
-            outgoing_edges.add(edge)
-
-        # Freeze
-        for node_uid, edges in self.__node_to_outgoing_edges.items():
-            self.__node_to_outgoing_edges[node_uid] = frozenset(edges)
-        self.__node_to_outgoing_edges = types.MappingProxyType(
-            self.__node_to_outgoing_edges)
+    def __freeze_nodes_incoming_outgoing_edges(self):
+        """Freezes the incoming and outgoing edges sets of the nodes."""
+        for node in self.__nodes.values():
+            node.freeze_incoming_edges()
+            node.freeze_outgoing_edges()
 
     def _add_node(self, node):
         """Adds a node to the self.__nodes dict."""
@@ -166,40 +140,6 @@ class Graph(abc.ABC):
             raise MemberAlreadyRegisteredError(edge)
         self.__edges[edge.uid] = edge
         edge.graph = self
-
-    def incoming_edges_for_node(self, node):
-        """Returns the set of incoming edges for the given node.
-
-        The set is independent of the edge probability but honors the deleted
-        state.
-        """
-        if node.deleted:
-            raise DeletedMemberInUseError(node)
-        incoming_edges = self.__node_to_incoming_edges.get(node.uid, None)
-        if not incoming_edges:
-            return EMPTY_FROZEN_SET
-        edges = set()
-        for edge in incoming_edges:
-            if not edge.deleted:
-                edges.add(edge)
-        return frozenset(edges)
-
-    def outgoing_edges_for_node(self, node):
-        """Returns the set of outgoing edges for the given node.
-
-        The set is independent of the edge probability but honors the deleted
-        state.
-        """
-        if node.deleted:
-            raise DeletedMemberInUseError(node)
-        outgoing_edges = self.__node_to_outgoing_edges.get(node.uid, None)
-        if not outgoing_edges:
-            return EMPTY_FROZEN_SET
-        edges = set()
-        for edge in outgoing_edges:
-            if not edge.deleted:
-                edges.add(edge)
-        return frozenset(edges)
 
     def unmark_deleted(self):
         """Unmarks all graph members as deleted."""
@@ -289,6 +229,11 @@ class Node(Member):  # pylint: disable=abstract-method
     """Abstract Node base class."""
 
     def __init__(self, uid):
+        # Private
+        self.__incoming_edges = set()
+        self.__outgoing_edges = set()
+
+        # Init
         super().__init__(uid)
 
     @property
@@ -298,7 +243,13 @@ class Node(Member):  # pylint: disable=abstract-method
         The set is independent of the edge probability but honors the deleted
         state.
         """
-        return self.graph.incoming_edges_for_node(self)
+        if self.deleted:
+            raise DeletedMemberInUseError(self)
+        edges = set()
+        for edge in self.__incoming_edges:
+            if not edge.deleted:
+                edges.add(edge)
+        return frozenset(edges)
 
     @property
     def outgoing_edges(self):
@@ -307,7 +258,55 @@ class Node(Member):  # pylint: disable=abstract-method
         The set is independent of the edge probability but honors the deleted
         state.
         """
-        return self.graph.outgoing_edges_for_node(self)
+        if self.deleted:
+            raise DeletedMemberInUseError(self)
+        edges = set()
+        for edge in self.__outgoing_edges:
+            if not edge.deleted:
+                edges.add(edge)
+        return frozenset(edges)
+
+    def add_incoming_edge(self, edge):
+        """Registers an edge as incoming edge with this node.
+
+        This method will only be called by an Edge constructor.  No further
+        edges can be added once the graph has been fully initialized as the
+        set of incoming edges on this node will be frozen.
+        """
+        if not isinstance(edge, Edge):
+            raise NotAnEdgeError(edge)
+        if edge.to_node != self:
+            raise NodeIsNotPartOfEdgeError(self, edge)
+        self.__incoming_edges.add(edge)
+
+    def add_outgoing_edge(self, edge):
+        """Registers an edge as outgoing edge with this node.
+
+        This method will only be called by an Edge constructor.  No further
+        edges can be added once the graph has been fully initialized as the
+        set of outgoing edges on this node will be frozen.
+        """
+        if not isinstance(edge, Edge):
+            raise NotAnEdgeError(edge)
+        if edge.from_node != self:
+            raise NodeIsNotPartOfEdgeError(self, edge)
+        self.__outgoing_edges.add(edge)
+
+    def freeze_incoming_edges(self):
+        """Freezes the set of incoming edges.
+
+        This method will be called by the Graph constructor once the
+        intialization is nearly complete.
+        """
+        self.__incoming_edges = frozenset(self.__incoming_edges)
+
+    def freeze_outgoing_edges(self):
+        """Freezes the set of incoming edges.
+
+        This method will be called by the Graph constructor once the
+        intialization is nearly complete.
+        """
+        self.__outgoing_edges = frozenset(self.__outgoing_edges)
 
     def mark_deleted(self):
         """Marks the node and its incoming and outgoing edges as deleted."""
@@ -339,6 +338,8 @@ class Edge(Member):
         # Init
         uid = self._nodes_to_edge_uid(from_node, to_node)
         super().__init__(uid)
+        from_node.add_outgoing_edge(self)
+        to_node.add_incoming_edge(self)
 
     @abc.abstractmethod
     def _nodes_to_edge_uid(self, from_node, to_node):

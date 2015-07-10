@@ -200,7 +200,7 @@ class TestGraph(unittest.TestCase):
         Graph(init_nodes_and_edges)
 
         ies = nt.incoming_edges
-        self.assertTrue(id(ies), id(purgatory.graph.EMPTY_FROZEN_SET))
+        self.assertEquals(len(ies), 0)
 
     def test_deleted_member_in_use_error_incoming_edges(self):
         nt = Node()
@@ -246,7 +246,7 @@ class TestGraph(unittest.TestCase):
         Graph(init_nodes_and_edges)
 
         oes = nf.outgoing_edges
-        self.assertTrue(id(oes), id(purgatory.graph.EMPTY_FROZEN_SET))
+        self.assertEquals(len(oes), 0)
 
     def test_deleted_member_in_use_error_outgoing_edges(self):
         nf = Node()
@@ -419,3 +419,64 @@ class TestGraph(unittest.TestCase):
         e = Edge(Node(), Node())
         with self.assertRaises(TypeError):
             graph.edges[e.uid] = e
+
+    def test_node_add_incoming_edge_raise_not_an_edge_error(self):
+        n = Node()
+        m = Member()
+        with self.assertRaises(purgatory.graph.NotAnEdgeError):
+            n.add_incoming_edge(m)
+
+    def test_node_add_outgoing_edge_raise_not_an_edge_error(self):
+        n = Node()
+        m = Member()
+        with self.assertRaises(purgatory.graph.NotAnEdgeError):
+            n.add_outgoing_edge(m)
+
+    def test_node_add_incoming_edge_raise_node_is_not_part_of_edge_error(self):
+        n = Node()
+        e = Edge(Node(), Node())
+        with self.assertRaises(purgatory.graph.NodeIsNotPartOfEdgeError):
+            n.add_incoming_edge(e)
+
+    def test_node_add_outgoing_edge_raise_node_is_not_part_of_edge_error(self):
+        n = Node()
+        e = Edge(Node(), Node())
+        with self.assertRaises(purgatory.graph.NodeIsNotPartOfEdgeError):
+            n.add_outgoing_edge(e)
+
+    def test_member_graph_property(self):
+        n = Node()
+
+        def init_nodes_and_edges(graph):
+            graph._add_node(n)
+
+        graph = Graph(init_nodes_and_edges)
+        self.assertEquals(n.graph, graph)
+
+    def test_node_incoming_edges_frozen_after_graph_inited(self):
+        nf = Node()
+        nt = Node()
+        e = Edge(nf, nt)
+
+        def init_nodes_and_edges(graph):
+            graph._add_node(nf)
+            graph._add_node(nt)
+            graph._add_edge(e)
+
+        graph = Graph(init_nodes_and_edges)
+        with self.assertRaises(AttributeError):
+            nt.add_incoming_edge(e)
+
+    def test_node_outgoing_edges_frozen_after_graph_inited(self):
+        nf = Node()
+        nt = Node()
+        e = Edge(nf, nt)
+
+        def init_nodes_and_edges(graph):
+            graph._add_node(nf)
+            graph._add_node(nt)
+            graph._add_edge(e)
+
+        graph = Graph(init_nodes_and_edges)
+        with self.assertRaises(AttributeError):
+            nf.add_outgoing_edge(e)
