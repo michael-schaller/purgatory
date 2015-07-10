@@ -371,9 +371,12 @@ class Edge(Member):
     def _nodes_to_edge_uid(self, from_node, to_node):
         """Returns an uid for this directed edge based on the nodes."""
 
-    @abc.abstractproperty
+    @property
     def probability(self):
-        """Returns the probability of this edge."""
+        """Returns the probability of this edge. Defaults to 1.0."""
+        if self.deleted:
+            raise DeletedMemberInUseError(self)
+        return 1.0
 
     @property
     def from_node(self):

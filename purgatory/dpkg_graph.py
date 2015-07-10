@@ -321,7 +321,19 @@ class InstalledDependencyNode(purgatory.graph.Node):
 
 
 class DependencyEdge(purgatory.graph.Edge):
-    """A dependency edge between an installed package and dependency node."""
+    """A dependency edge between an installed package and dependency node.
+
+    Please note that the probability of a dependency edge is always 1.0.
+
+    PreDepends and Depends dependency types are hard dependencies and there
+    is always only one InstalledDependencyNode which can fulfill a
+    dependency - hence the static probability of 1.0.
+
+    Recommends dependency types are optional dependencies.  There would be
+    no DepedencyEdge if the corresponding package or dependency wouldn't be
+    installed.  There is again only one InstalledDependencyNode which can
+    fulfill a recommends dependency - hence the probability of 1.0.
+    """
 
     def __init__(self, from_node, to_node):
         """DependencyEdge constructor.
@@ -348,21 +360,6 @@ class DependencyEdge(purgatory.graph.Edge):
     def _init_str(self):
         """Initializes self._str for self.__str__."""
         self._str = self.uid
-
-    @property
-    def probability(self):
-        """Probability of a dependency edge.
-
-        PreDepends and Depends dependency types are hard dependencies and there
-        is always only one InstalledDependencyNode which can fulfill a
-        dependency - hence the static probability of 1.0.
-
-        Recommends dependency types are optional dependencies.  There would be
-        no DepedencyEdge if the corresponding package or dependency wouldn't be
-        installed.  There is again only one InstalledDependencyNode which can
-        fulfill a recommends dependency - hence the probability of 1.0.
-        """
-        return 1.0
 
 
 class TargetEdge(purgatory.graph.Edge):

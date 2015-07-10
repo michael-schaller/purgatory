@@ -61,10 +61,6 @@ class Edge(purgatory.graph.Edge):
     def _init_str(self):
         self._str = self.uid
 
-    @property
-    def probability(self):
-        return 1.0
-
 
 def setUpModule():
     """Module-wide setup."""
@@ -490,3 +486,13 @@ class TestGraph(unittest.TestCase):
         Graph(init_nodes_and_edges)
         with self.assertRaises(AttributeError):
             nf.add_outgoing_edge(e)
+
+    def test_edge_default_probability(self):
+        e = Edge(Node(), Node())
+        self.assertEquals(e.probability, 1.0)
+
+    def test_deleted_edge_probability_raises_deleted_member_in_use_error(self):
+        e = Edge(Node(), Node())
+        e.mark_deleted()
+        with self.assertRaises(purgatory.graph.DeletedMemberInUseError):
+            e.probability  # pylint: disable=pointless-statement
