@@ -57,18 +57,23 @@ class CommonDpkgGraphTestsMixin(object):
     def test_dependency_edge_probabilities(self):
         graph = self.graph
         for edge in graph.dependency_edges.values():
-            self.assertEquals(edge.probability, 1.0)
+            self.assertTrue(
+                abs(edge.probability - 1.0) < purgatory.graph.EPSILON)
 
     def test_target_edge_probabilities(self):
         graph = self.graph
-        for edge in graph.target_edges.values():
-            edge.mark_deleted()
-            with self.assertRaises(purgatory.graph.DeletedMemberInUseError):
-                edge.probability  # pylint: disable=pointless-statement
-            edge.unmark_deleted()
 
+        # Mark all target edges of the graph as deleted.
+        for edge in graph.target_edges.values():  # Random order!
+            if edge.deleted:
+                continue  # Already marked deleted.
             self.assertTrue(edge.probability <= 1.0)
             self.assertTrue(edge.probability > 0.0)
+            edge.mark_deleted()
+
+        # All installed dependency nodes must be marked as deleted.
+        for node in graph.installed_dependency_nodes.values():
+            self.assertTrue(node.deleted)
 
 
 class TestJessieDpkgGraph(unittest.TestCase, CommonDpkgGraphTestsMixin):

@@ -1,9 +1,35 @@
-"""Graph with nodes and directed edges that have probabilities."""
+"""A hierarchical Graph with nodes and directed edges that have probabilities.
+
+A hierarchical Graph consists of Nodes and directed Edges that have
+probabilities.  An edge of type Edge has always the probability 1.0 and
+represents a mandatory edge.  Furthermore edges can also be in an
+or-relationship if they are of type OrEdge.  Any of the edges in an
+or-relationship satisfy the hierarchie but it is not important which one.
+Edges of type OrEdge have a probability depending on how many edges are in the
+or-relationship.  For more details see the docstring of the OrEdge type.
+
+A Graph's set of Nodes and Edges can't be changed after initialization.
+However Nodes and Edges can be marked as deleted.  Every Graph member that is
+marked as deleted will be ignored by algorithms but be warned that some
+algorithms reset the deleted markers.  Whenever the deleted markers are changed
+there will be a note in the respective docstring.
+
+As a Graph is hierachical the mark_deleted methods on Nodes and Edges behave
+differently than with classical/generic Graph implementations.  Marking a Node
+as deleted also marks its incoming and outgoing edges as deleted as edges can't
+exist without their nodes existing.  Marking an Edge as deleted typically marks
+everything above the from-node of the Edge as deleted as the Nodes and Edges
+can't exist anymore without their foundation.  The only exception to this rule
+is made if the hierarchie isn't violated due to edges in an or-relationship.
+"""
 
 import abc
 import types
 
 import purgatory.error
+
+
+EPSILON = 0.00001
 
 
 class GraphError(purgatory.error.PurgatoryError):
@@ -24,6 +50,15 @@ class NotAnEdgeError(GraphError):
 
     def __init__(self, something):
         msg = "Expected an instance of class 'Edge' but got class '%s'!" % (
+            something.__class__)
+        super().__init__(msg)
+
+
+class NotAnOrEdgeError(GraphError):
+    """Raised if an or-edge was expected but something else was given."""
+
+    def __init__(self, something):
+        msg = "Expected an instance of class 'OrEdge' but got class '%s'!" % (
             something.__class__)
         super().__init__(msg)
 
@@ -92,8 +127,8 @@ class Graph(abc.ABC):
     def __freeze_nodes_incoming_outgoing_edges(self):
         """Freezes the incoming and outgoing edges sets of the nodes."""
         for node in self.__nodes.values():
-            node.freeze_incoming_edges()
-            node.freeze_outgoing_edges()
+            node._freeze_incoming_edges()  # pylint: disable=protected-access
+            node._freeze_outgoing_edges()  # pylint: disable=protected-access
 
     def _add_node(self, node):
         """Adds a node to the self.__nodes dict."""
@@ -144,9 +179,9 @@ class Graph(abc.ABC):
     def unmark_deleted(self):
         """Unmarks all graph members as deleted."""
         for edge in self.__edges.values():
-            edge.unmark_deleted()
+            edge._deleted = False  # pylint: disable=protected-access
         for node in self.__nodes.values():
-            node.unmark_deleted()
+            node._deleted = False  # pylint: disable=protected-access
 
 
 class Member(abc.ABC):
@@ -220,10 +255,6 @@ class Member(abc.ABC):
     def mark_deleted(self):
         """Marks the graph member as deleted."""
 
-    @abc.abstractmethod
-    def unmark_deleted(self):
-        """Unmarks the graph member as deleted."""
-
 
 class Node(Member):  # pylint: disable=abstract-method
     """Abstract Node base class."""
@@ -236,6 +267,70 @@ class Node(Member):  # pylint: disable=abstract-method
         # Init
         super().__init__(uid)
 
+    def _add_incoming_edge(self, edge):
+        """Registers an edge as incoming edge with this node.
+
+        This method will only be called by an Edge constructor.  No further
+        edges can be added once the graph has been fully initialized as the
+        set of incoming edges on this node will be frozen.
+        """
+        if not isinstance(edge, Edge):
+            raise NotAnEdgeError(edge)
+        if edge.to_node != self:
+            raise NodeIsNotPartOfEdgeError(self, edge)
+        self.__incoming_edges.add(edge)
+
+    def _add_outgoing_edge(self, edge):
+        """Registers an edge as outgoing edge with this node.
+
+        This method will only be called by an Edge constructor.  No further
+        edges can be added once the graph has been fully initialized as the
+        set of outgoing edges on this node will be frozen.
+
+        Furthermore the outgoing edges can be either of type Edge or OrEdge.
+        Mixing these types inside the outgoing edges set is not allowed!
+        """
+        # Basic checks.
+        if not isinstance(edge, Edge):
+            raise NotAnEdgeError(edge)
+        if edge.from_node != self:
+            raise NodeIsNotPartOfEdgeError(self, edge)
+
+        # Add edge while ensuring that all outgoing edges are either of type
+        # Edge or of type OrEdge.
+        edge_count = 0
+        or_edge_count = 0
+        for outgoing_edge in self.__outgoing_edges:
+            if isinstance(outgoing_edge, OrEdge):
+                or_edge_count += 1
+            else:
+                edge_count += 1
+        if isinstance(edge, OrEdge):
+            # Trying to add edge of type OrEdge
+            if edge_count > 0:
+                raise NotAnEdgeError(edge)
+        else:
+            # Trying to add edge of type Edge
+            if or_edge_count > 0:
+                raise NotAnOrEdgeError(edge)
+        self.__outgoing_edges.add(edge)
+
+    def _freeze_incoming_edges(self):
+        """Freezes the set of incoming edges.
+
+        This method will be called by the Graph constructor once the
+        intialization is nearly complete.
+        """
+        self.__incoming_edges = frozenset(self.__incoming_edges)
+
+    def _freeze_outgoing_edges(self):
+        """Freezes the set of incoming edges.
+
+        This method will be called by the Graph constructor once the
+        intialization is nearly complete.
+        """
+        self.__outgoing_edges = frozenset(self.__outgoing_edges)
+
     @property
     def incoming_edges(self):
         """Returns set of all directly incoming edges.
@@ -243,7 +338,7 @@ class Node(Member):  # pylint: disable=abstract-method
         The set is independent of the edge probability but honors the deleted
         state.
         """
-        if self.deleted:
+        if self._deleted:
             raise DeletedMemberInUseError(self)
         edges = set()
         for edge in self.__incoming_edges:
@@ -271,7 +366,7 @@ class Node(Member):  # pylint: disable=abstract-method
         The set is independent of the edge probability but honors the deleted
         state.
         """
-        if self.deleted:
+        if self._deleted:
             raise DeletedMemberInUseError(self)
         edges = set()
         for edge in self.__outgoing_edges:
@@ -292,59 +387,22 @@ class Node(Member):  # pylint: disable=abstract-method
             nodes.add(edge.to_node)
         return frozenset(nodes)
 
-    def add_incoming_edge(self, edge):
-        """Registers an edge as incoming edge with this node.
-
-        This method will only be called by an Edge constructor.  No further
-        edges can be added once the graph has been fully initialized as the
-        set of incoming edges on this node will be frozen.
-        """
-        if not isinstance(edge, Edge):
-            raise NotAnEdgeError(edge)
-        if edge.to_node != self:
-            raise NodeIsNotPartOfEdgeError(self, edge)
-        self.__incoming_edges.add(edge)
-
-    def add_outgoing_edge(self, edge):
-        """Registers an edge as outgoing edge with this node.
-
-        This method will only be called by an Edge constructor.  No further
-        edges can be added once the graph has been fully initialized as the
-        set of outgoing edges on this node will be frozen.
-        """
-        if not isinstance(edge, Edge):
-            raise NotAnEdgeError(edge)
-        if edge.from_node != self:
-            raise NodeIsNotPartOfEdgeError(self, edge)
-        self.__outgoing_edges.add(edge)
-
-    def freeze_incoming_edges(self):
-        """Freezes the set of incoming edges.
-
-        This method will be called by the Graph constructor once the
-        intialization is nearly complete.
-        """
-        self.__incoming_edges = frozenset(self.__incoming_edges)
-
-    def freeze_outgoing_edges(self):
-        """Freezes the set of incoming edges.
-
-        This method will be called by the Graph constructor once the
-        intialization is nearly complete.
-        """
-        self.__outgoing_edges = frozenset(self.__outgoing_edges)
-
     def mark_deleted(self):
         """Marks the node and its incoming and outgoing edges as deleted."""
-        for edge in self.incoming_edges:
-            edge.mark_deleted()
-        for edge in self.outgoing_edges:
-            edge.mark_deleted()
+        if self._deleted:
+            return  # Stop recursion
+
+        # Get all needed data from the node and then mark it as deleted.
+        incoming_edges = self.incoming_edges
+        outgoing_edges = self.outgoing_edges
         self._deleted = True
 
-    def unmark_deleted(self):
-        """Unmarks the node as deleted. This doesn't affect edges."""
-        self._deleted = False
+        # Mark the incoming/outgoing edges as deleted as edges can't exist
+        # without their nodes.
+        for edge in incoming_edges:
+            edge.mark_deleted()
+        for edge in outgoing_edges:
+            edge.mark_deleted()
 
 
 class Edge(Member):
@@ -364,8 +422,8 @@ class Edge(Member):
         # Init
         uid = self._nodes_to_edge_uid(from_node, to_node)
         super().__init__(uid)
-        from_node.add_outgoing_edge(self)
-        to_node.add_incoming_edge(self)
+        from_node._add_outgoing_edge(self)  # pylint: disable=protected-access
+        to_node._add_incoming_edge(self)  # pylint: disable=protected-access
 
     @abc.abstractmethod
     def _nodes_to_edge_uid(self, from_node, to_node):
@@ -374,7 +432,7 @@ class Edge(Member):
     @property
     def probability(self):
         """Returns the probability of this edge. Defaults to 1.0."""
-        if self.deleted:
+        if self._deleted:
             raise DeletedMemberInUseError(self)
         return 1.0
 
@@ -389,11 +447,52 @@ class Edge(Member):
         return self.__to_node
 
     def mark_deleted(self):
-        """Marks the edge as deleted. This doesn't affect its nodes."""
+        """Marks the edge as deleted. This might also affect its outgoing node.
+
+        As a graph represents a hierarchie the nodes that are above a node also
+        need to be marked as deleted as long as there is no alternative edge
+        that ensures that the hierarchie isn't violated.
+        """
+        if self._deleted:
+            return  # Stop recursion
+
+        # Get all needed data from the edge and then mark it as deleted.
+        probability = self.probability
+        from_node = self.from_node
         self._deleted = True
 
-    def unmark_deleted(self):
-        """Unmarks the edge and its nodes as deleted."""
-        self.from_node.unmark_deleted()
-        self.to_node.unmark_deleted()
-        self._deleted = False
+        # Check if the hierarchy is violated and mark the from-node as deleted
+        # if necessary.
+        if abs(probability - 1.0) < EPSILON:
+            from_node.mark_deleted()
+
+
+class OrEdge(Edge):  # pylint: disable=abstract-method
+    """Represents an or-relationship between edges.
+
+    OrEdge represents edges that are in an or-relationship.  This means that
+    any of the edges in the or-relationship satisfies the hierarchie but it is
+    not important which one.  One can also think of the or-relationship as a
+    single edge with one from-node but multiple to-nodes.  Because of this Edge
+    and OrEdge can't be mixed in the outgoing edges set of a node!
+
+    Edges of type OrEdge have a probability depending on how many edges are
+    in the or-relationship.  If there is one OrEdge then it has a probability
+    of 1/1.  If there are two edges in the or-relationship both have a
+    probability of 1/2.  If there are three edges they all have 1/3 and so on.
+    """
+
+    @property
+    def probability(self):
+        """Returns the probability of this edge.
+
+        The probability is based on the edges in parallel to this edge.  Each
+        one has the same probability to be choosen.
+        """
+        if self._deleted:
+            raise purgatory.graph.DeletedMemberInUseError(self)
+        outgoing_edges = self.from_node.outgoing_edges
+
+        # Division by zero should be impossible as there is always at least
+        # the current edge and hence len(outgoing_edges) should be >= 1.
+        return 1 / len(outgoing_edges)

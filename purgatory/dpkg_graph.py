@@ -362,7 +362,7 @@ class DependencyEdge(purgatory.graph.Edge):
         self._str = self.uid
 
 
-class TargetEdge(purgatory.graph.Edge):
+class TargetEdge(purgatory.graph.OrEdge):
     """A target edge between an installed dependency and package node."""
 
     def __init__(self, from_node, to_node):
@@ -383,24 +383,9 @@ class TargetEdge(purgatory.graph.Edge):
         pass  # TargetEdge implements its own __str__ method
 
     def __str__(self):
-        p = self.probability
-        if abs(p - 1.0) <= 0.00001:
+        if abs(self.probability - 1.0) < purgatory.graph.EPSILON:
             return "%s --> %s" % (
                 self.from_node, self.to_node)
         else:
             return "%s --p=%.3f--> %s" % (
                 self.from_node, self.probability, self.to_node)
-
-    @property
-    def probability(self):
-        """Returns the probability of this edge.
-
-        The probability is based on the edges in parallel to this edge.  Each
-        one has the same probability to be choosen.
-        """
-        if self.deleted:
-            raise purgatory.graph.DeletedMemberInUseError(self)
-        outgoing_edges = self.from_node.outgoing_edges
-        # Division by zero should be impossible as there is always at least
-        # the current edge and hence len(outgoing_edges) should be >= 1.
-        return 1/len(outgoing_edges)

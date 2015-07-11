@@ -62,6 +62,19 @@ class Edge(purgatory.graph.Edge):
         self._str = self.uid
 
 
+class OrEdge(purgatory.graph.OrEdge):
+
+    def __str__(self):
+        return "%s --p=%.3f--> %s" % (
+            self.from_node.uid, self.probability, self.to_node.uid)
+
+    def _nodes_to_edge_uid(self, from_node, to_node):
+        return "%s --> %s" % (from_node.uid, to_node.uid)
+
+    def _init_str(self):
+        pass  # Custom __str__ implementation.
+
+
 def setUpModule():
     """Module-wide setup."""
     purgatory.logging.configure_root_logger()
@@ -272,16 +285,17 @@ class TestGraph(unittest.TestCase):
         def init_nodes_and_edges(graph):
             graph._add_node(n)
 
-        Graph(init_nodes_and_edges)
+        g = Graph(init_nodes_and_edges)
         self.assertFalse(n.deleted)
 
         n.mark_deleted()
         self.assertTrue(n.deleted)
 
-        n.unmark_deleted()
+        g.unmark_deleted()
         self.assertFalse(n.deleted)
 
     def test_mark_deleted_edge_and_graph(self):
+        # Relationship: nf --ei--> n --eo--> nt
         n = Node()
         nf = Node()
         nt = Node()
@@ -299,6 +313,38 @@ class TestGraph(unittest.TestCase):
 
         g = Graph(init_nodes_and_edges)
 
+        self.assertFalse(nf.deleted)
+        self.assertFalse(ei.deleted)
+        self.assertFalse(n.deleted)
+        self.assertFalse(eo.deleted)
+        self.assertFalse(nt.deleted)
+
+        nf.mark_deleted()
+
+        self.assertTrue(nf.deleted)
+        self.assertTrue(ei.deleted)
+        self.assertFalse(n.deleted)
+        self.assertFalse(eo.deleted)
+        self.assertFalse(nt.deleted)
+
+        g.unmark_deleted()
+
+        self.assertFalse(n.deleted)
+        self.assertFalse(nf.deleted)
+        self.assertFalse(nt.deleted)
+        self.assertFalse(ei.deleted)
+        self.assertFalse(eo.deleted)
+
+        ei.mark_deleted()
+
+        self.assertTrue(nf.deleted)
+        self.assertTrue(ei.deleted)
+        self.assertFalse(n.deleted)
+        self.assertFalse(eo.deleted)
+        self.assertFalse(nt.deleted)
+
+        g.unmark_deleted()
+
         self.assertFalse(n.deleted)
         self.assertFalse(nf.deleted)
         self.assertFalse(nt.deleted)
@@ -307,32 +353,11 @@ class TestGraph(unittest.TestCase):
 
         n.mark_deleted()
 
-        self.assertTrue(n.deleted)
-        self.assertFalse(nf.deleted)
-        self.assertFalse(nt.deleted)
-        self.assertTrue(ei.deleted)
-        self.assertTrue(eo.deleted)
-
-        ei.unmark_deleted()
-        self.assertFalse(n.deleted)
-        self.assertFalse(nf.deleted)
-        self.assertFalse(nt.deleted)
-        self.assertFalse(ei.deleted)
-        self.assertTrue(eo.deleted)
-
-        nf.mark_deleted()
-        self.assertFalse(n.deleted)
         self.assertTrue(nf.deleted)
-        self.assertFalse(nt.deleted)
         self.assertTrue(ei.deleted)
+        self.assertTrue(n.deleted)
         self.assertTrue(eo.deleted)
-
-        g.unmark_deleted()
-        self.assertFalse(n.deleted)
-        self.assertFalse(nf.deleted)
         self.assertFalse(nt.deleted)
-        self.assertFalse(ei.deleted)
-        self.assertFalse(eo.deleted)
 
     def test_member_init_str(self):
 
@@ -430,25 +455,25 @@ class TestGraph(unittest.TestCase):
         n = Node()
         m = Member()
         with self.assertRaises(purgatory.graph.NotAnEdgeError):
-            n.add_incoming_edge(m)
+            n._add_incoming_edge(m)
 
     def test_node_add_outgoing_edge_raise_not_an_edge_error(self):
         n = Node()
         m = Member()
         with self.assertRaises(purgatory.graph.NotAnEdgeError):
-            n.add_outgoing_edge(m)
+            n._add_outgoing_edge(m)
 
     def test_node_add_incoming_edge_raise_node_is_not_part_of_edge_error(self):
         n = Node()
         e = Edge(Node(), Node())
         with self.assertRaises(purgatory.graph.NodeIsNotPartOfEdgeError):
-            n.add_incoming_edge(e)
+            n._add_incoming_edge(e)
 
     def test_node_add_outgoing_edge_raise_node_is_not_part_of_edge_error(self):
         n = Node()
         e = Edge(Node(), Node())
         with self.assertRaises(purgatory.graph.NodeIsNotPartOfEdgeError):
-            n.add_outgoing_edge(e)
+            n._add_outgoing_edge(e)
 
     def test_member_graph_property(self):
         n = Node()
@@ -471,7 +496,7 @@ class TestGraph(unittest.TestCase):
 
         Graph(init_nodes_and_edges)
         with self.assertRaises(AttributeError):
-            nt.add_incoming_edge(e)
+            nt._add_incoming_edge(e)
 
     def test_node_outgoing_edges_frozen_after_graph_inited(self):
         nf = Node()
@@ -485,7 +510,7 @@ class TestGraph(unittest.TestCase):
 
         Graph(init_nodes_and_edges)
         with self.assertRaises(AttributeError):
-            nf.add_outgoing_edge(e)
+            nf._add_outgoing_edge(e)
 
     def test_edge_default_probability(self):
         e = Edge(Node(), Node())
@@ -496,3 +521,74 @@ class TestGraph(unittest.TestCase):
         e.mark_deleted()
         with self.assertRaises(purgatory.graph.DeletedMemberInUseError):
             e.probability  # pylint: disable=pointless-statement
+
+    def test_raise_not_an_or_edge_error(self):
+        nf = Node()
+        Edge(nf, Node())
+        with self.assertRaises(purgatory.graph.NotAnEdgeError):
+            OrEdge(nf, Node())
+
+    def test_raise_not_an_edge_error(self):
+        nf = Node()
+        OrEdge(nf, Node())
+        with self.assertRaises(purgatory.graph.NotAnOrEdgeError):
+            Edge(nf, Node())
+
+    def test_mark_delete_with_probabilties(self):
+        #               /--e2(p=0.5)--> n3
+        # n1 --e1--> n2
+        #               \--e3(p=0.5)--> n4 --e4--> n5
+        #
+        # The edges e2 and e3 are in an or-relationship.  Marking n5 as deleted
+        # should also mark e4, n4 and e3 as deleted.  e2 should have a
+        # probability of 1.0 afterwards.
+        n1 = Node()
+        n2 = Node()
+        n3 = Node()
+        n4 = Node()
+        n5 = Node()
+
+        e1 = Edge(n1, n2)
+        e2 = OrEdge(n2, n3)
+        e3 = OrEdge(n2, n4)
+        e4 = Edge(n4, n5)
+
+        def init_nodes_and_edges(graph):
+            graph._add_node(n1)
+            graph._add_node(n2)
+            graph._add_node(n3)
+            graph._add_node(n4)
+            graph._add_node(n5)
+
+            graph._add_edge(e1)
+            graph._add_edge(e2)
+            graph._add_edge(e3)
+            graph._add_edge(e4)
+
+        Graph(init_nodes_and_edges)
+
+        self.assertFalse(n1.deleted)
+        self.assertFalse(n2.deleted)
+        self.assertFalse(n3.deleted)
+        self.assertFalse(n4.deleted)
+        self.assertFalse(n5.deleted)
+
+        self.assertFalse(e1.deleted)
+        self.assertFalse(e2.deleted)
+        self.assertFalse(e3.deleted)
+        self.assertFalse(e4.deleted)
+
+        n5.mark_deleted()
+
+        self.assertFalse(n1.deleted)
+        self.assertFalse(n2.deleted)
+        self.assertFalse(n3.deleted)
+        self.assertTrue(n4.deleted)
+        self.assertTrue(n5.deleted)
+
+        self.assertFalse(e1.deleted)
+        self.assertFalse(e2.deleted)
+        self.assertTrue(e3.deleted)
+        self.assertTrue(e4.deleted)
+
+        self.assertTrue(abs(e2.probability - 1.0) < purgatory.graph.EPSILON)
