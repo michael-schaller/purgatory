@@ -21,6 +21,10 @@ exist without their nodes existing.  Marking an Edge as deleted typically marks
 everything above the from-node of the Edge as deleted as the Nodes and Edges
 can't exist anymore without their foundation.  The only exception to this rule
 is made if the hierarchie isn't violated due to edges in an or-relationship.
+
+Cycles in the Graph are always treated as an undividable cluster of nodes.
+For an instance Graph.head_nodes returns the head (aka. leaf) nodes and the
+nodes within head cycles.
 """
 
 import abc
@@ -30,6 +34,7 @@ import purgatory.error
 
 
 EPSILON = 0.00001
+EMPTY_FROZEN_SET = frozenset()
 
 
 class GraphError(purgatory.error.PurgatoryError):
@@ -98,6 +103,15 @@ class NodeIsNotPartOfEdgeError(GraphError):
         super().__init__(msg)
 
 
+class EdgeWithZeroProbabilityError(GraphError):
+    """Raised if an edge has the probability of 0.0."""
+
+    def __init__(self, edge):
+        msg = ("The edge '%s' has a probability of 0.0 and isn't of any use "
+               "to the Graph!") % (edge)
+        super().__init__(msg)
+
+
 class Graph(abc.ABC):
     """Abstract Graph base class with nodes and directed edges.
 
@@ -111,6 +125,9 @@ class Graph(abc.ABC):
         self.__nodes = {}  # uid:node
         self.__edges = {}  # uid:edge
 
+        # Protected
+        self._mark_deleted_cache_level = 0
+
         # Init
         super().__init__()
         self._init_nodes_and_edges()
@@ -119,6 +136,11 @@ class Graph(abc.ABC):
         self.__nodes = types.MappingProxyType(self.__nodes)
         self.__edges = types.MappingProxyType(self.__edges)
         self.__freeze_nodes_incoming_outgoing_edges()
+
+        # Check
+        for edge in self.__edges.values():
+            if abs(edge.probability - 0.0) < EPSILON:
+                raise EdgeWithZeroProbabilityError(edge)
 
     @abc.abstractmethod
     def _init_nodes_and_edges(self):
@@ -159,12 +181,18 @@ class Graph(abc.ABC):
 
     @property
     def edges(self):
-        """Returns a dict view (uid:edge) of the edges in the graph."""
+        """Returns a dict view (uid:edge) of the edges in the graph.
+
+        The dict view is unfiltered and thus contains deleted edges.
+        """
         return self.__edges
 
     @property
     def nodes(self):
-        """Returns a dict view (uid:node) of the nodes in the graph."""
+        """Returns a dict view (uid:node) of the nodes in the graph.
+
+        The dict view is unfiltered and thus contains deleted nodes.
+        """
         return self.__nodes
 
     def _add_edge(self, edge):
@@ -182,6 +210,7 @@ class Graph(abc.ABC):
             edge._deleted = False  # pylint: disable=protected-access
         for node in self.__nodes.values():
             node._deleted = False  # pylint: disable=protected-access
+        self._mark_deleted_cache_level += 1
 
 
 class Member(abc.ABC):
@@ -208,8 +237,20 @@ class Member(abc.ABC):
             return False
         return self.__uid == other.uid
 
+    def __ge__(self, other):
+        return self.__uid >= other.uid
+
+    def __gt__(self, other):
+        return self.__uid > other.uid
+
     def __hash__(self):
         return self.__hash
+
+    def __le__(self, other):
+        return self.__uid <= other.uid
+
+    def __lt__(self, other):
+        return self.__uid < other.uid
 
     def __ne__(self, other):
         return not self.__eq__(other)
@@ -263,6 +304,18 @@ class Node(Member):  # pylint: disable=abstract-method
         # Private
         self.__incoming_edges = set()
         self.__outgoing_edges = set()
+        self.__incoming_edges_property_cache = None
+        self.__incoming_edges_property_cache_level = 0
+        self.__incoming_nodes_property_cache = None
+        self.__incoming_nodes_property_cache_level = 0
+        self.__incoming_nodes_recursive_func_cache = None
+        self.__incoming_nodes_recursive_func_cache_level = 0
+        self.__outgoing_edges_property_cache = None
+        self.__outgoing_edges_property_cache_level = 0
+        self.__outgoing_nodes_property_cache = None
+        self.__outgoing_nodes_property_cache_level = 0
+        self.__outgoing_nodes_recursive_func_cache = None
+        self.__outgoing_nodes_recursive_func_cache_level = 0
 
         # Init
         super().__init__(uid)
@@ -332,70 +385,276 @@ class Node(Member):  # pylint: disable=abstract-method
         self.__outgoing_edges = frozenset(self.__outgoing_edges)
 
     @property
-    def incoming_edges(self):
-        """Returns set of all directly incoming edges.
+    def cycle_nodes(self):
+        """Returns the set of the nodes in the cycle if is_cycle is True.
 
-        The set is independent of the edge probability but honors the deleted
-        state.
+        If this node isn't part of a cycle an empty set will be returned.
+        """
+        inrs = self.incoming_nodes_recursive
+        onrs = self.outgoing_nodes_recursive
+        return frozenset(inrs & onrs)
+
+    @property
+    def in_cycle(self):
+        """Returns True if this Node is part of a cycle."""
+        # It doesn't matter if the tests uses the recursive incoming nodes set
+        # or the outgoing one - the result is in both cases the same.
+        if self in self.incoming_nodes_recursive:
+            return True
+        return False
+
+    @property
+    def incoming_edges(self):
+        """Returns the set of all possible directly incoming edges.
+
+        The set doesn't includes edges that are marked as deleted.  The set is
+        independent of the edge probability because any edge with a probability
+        greater 0.0 are included and edges with probability 0.0 can't be in the
+        graph.
         """
         if self._deleted:
             raise DeletedMemberInUseError(self)
-        edges = set()
-        for edge in self.__incoming_edges:
-            if not edge.deleted:
-                edges.add(edge)
-        return frozenset(edges)
+
+        # Check if cached data is available and still valid
+        graph_cache_level = self.graph._mark_deleted_cache_level  # noqa  # pylint: disable=protected-access
+        if self.__incoming_edges_property_cache is not None:
+            local_cache_level = self.__incoming_edges_property_cache_level
+            if local_cache_level == graph_cache_level:
+                # Return still valid cached result
+                return self.__incoming_edges_property_cache
+
+        # Calculate, cache and return result
+        ies = {edge for edge in self.__incoming_edges if not edge._deleted}  # noqa  # pylint: disable=protected-access
+        ies = frozenset(ies)
+        self.__incoming_edges_property_cache = ies
+        self.__incoming_edges_property_cache_level = graph_cache_level
+        return ies
 
     @property
     def incoming_nodes(self):
-        """Returns set of all directly incoming nodes.
+        """Returns the set of all possible directly incoming nodes.
 
-        The set is independent of the edge probability but honors the deleted
-        state.
-        """
-        nodes = set()
-        for edge in self.incoming_edges:
-            # Node can't be deleted as edge isn't deleted either.
-            nodes.add(edge.from_node)
-        return frozenset(nodes)
-
-    @property
-    def outgoing_edges(self):
-        """Returns set of all directly outgoing edges.
-
-        The set is independent of the edge probability but honors the deleted
-        state.
+        The set doesn't includes nodes that are marked as deleted.  The set is
+        independent of the edge probability because any edge with a probability
+        greater 0.0 are included and edges with probability 0.0 can't be in the
+        graph.
         """
         if self._deleted:
             raise DeletedMemberInUseError(self)
-        edges = set()
-        for edge in self.__outgoing_edges:
-            if not edge.deleted:
-                edges.add(edge)
-        return frozenset(edges)
+
+        # Check if cached data is available and still valid
+        graph_cache_level = self.graph._mark_deleted_cache_level  # noqa  # pylint: disable=protected-access
+        if self.__incoming_nodes_property_cache is not None:
+            local_cache_level = self.__incoming_nodes_property_cache_level
+            if local_cache_level == graph_cache_level:
+                # Return still valid cached result
+                return self.__incoming_nodes_property_cache
+
+        # Calculate, cache and return result
+        ins = {edge.from_node for edge in self.incoming_edges}
+        ins = frozenset(ins)
+        self.__incoming_nodes_property_cache = ins
+        self.__incoming_nodes_property_cache_level = graph_cache_level
+        return ins
+
+    def _incoming_nodes_recursive(self, visited_nodes):
+        """Recursive helper method for the incoming_nodes_recursive prop."""
+        if self._deleted:
+            raise DeletedMemberInUseError(self)
+
+        # Check if cached data is available and still valid
+        graph_cl = self.graph._mark_deleted_cache_level  # noqa  # pylint: disable=protected-access
+        if self.__incoming_nodes_recursive_func_cache is not None:
+            local_cl = self.__incoming_nodes_recursive_func_cache_level
+            if local_cl == graph_cl:
+                # Return still valid cached result and allow further caching.
+                return self.__incoming_nodes_recursive_func_cache, True
+
+        # Check/update visited nodes
+        if self in visited_nodes:
+            # This node has been already visited and hence this node is part of
+            # a cycle.  Return an empty set to break the recursion.
+            # Furthermore disallow caching of this result as only the final
+            # result and not the intermediary results are cachable.
+            return EMPTY_FROZEN_SET, False
+        else:
+            visited_nodes.add(self)
+
+        # Calculate result.
+        cache_result = True
+        incoming_nodes = self.incoming_nodes
+        incoming_nodes_recursive = incoming_nodes.copy()
+        for incoming_node in incoming_nodes:
+            if self == incoming_node:
+                continue  # Self-cycle -> No need to visit again
+            _result, _cache_result = incoming_node._incoming_nodes_recursive(  # noqa  # pylint: disable=protected-access
+                visited_nodes=visited_nodes)
+            if not _cache_result:
+                # The result wasn't cached because a cycle is somehow involved.
+                # As the incoming_node didn't cache its result don't cache this
+                # result either.  The result will then be cached once the final
+                # result has been determined.
+                cache_result = False
+            incoming_nodes_recursive |= _result
+
+        # Cache (if allowed) and return result
+        result = frozenset(incoming_nodes_recursive)
+        if cache_result:
+            self.__incoming_nodes_recursive_func_cache = result
+            self.__incoming_nodes_recursive_func_cache_level = graph_cl
+        return result, cache_result
+
+    @property
+    def incoming_nodes_recursive(self):
+        """Returns the set of all possible directly and indir. incoming nodes.
+
+        The set doesn't includes nodes that are marked as deleted.  The set is
+        independent of the edge probability because any edge with a probability
+        greater 0.0 are included and edges with probability 0.0 can't be in the
+        graph.
+
+        If the set includes this node itself then this node is part of a cycle.
+        """
+        result, cache_result = self._incoming_nodes_recursive(
+            visited_nodes=set())
+        if not cache_result:
+            # Result hasn't been cached yet.  Cache the result as the overall
+            # result is always valid.
+            self.__incoming_nodes_recursive_func_cache = result
+            gcl = self.graph._mark_deleted_cache_level  # noqa  # pylint: disable=protected-access
+            self.__incoming_nodes_recursive_func_cache_level = gcl
+        return result
+
+    @property
+    def outgoing_edges(self):
+        """Returns the set of all possible directly outgoing edges.
+
+        The set doesn't includes edges that are marked as deleted.  The set is
+        independent of the edge probability because any edge with a probability
+        greater 0.0 are included and edges with probability 0.0 can't be in the
+        graph.
+        """
+        if self._deleted:
+            raise DeletedMemberInUseError(self)
+
+        # Check if cached data is available and still valid
+        graph_cache_level = self.graph._mark_deleted_cache_level  # noqa  # pylint: disable=protected-access
+        if self.__outgoing_edges_property_cache is not None:
+            local_cache_level = self.__outgoing_edges_property_cache_level
+            if local_cache_level == graph_cache_level:
+                # Return still valid cached result
+                return self.__outgoing_edges_property_cache
+
+        # Calculate, cache and return result
+        oes = {edge for edge in self.__outgoing_edges if not edge._deleted}  # noqa  # pylint: disable=protected-access
+        oes = frozenset(oes)
+        self.__outgoing_edges_property_cache = oes
+        self.__outgoing_edges_property_cache_level = graph_cache_level
+        return oes
 
     @property
     def outgoing_nodes(self):
-        """Returns set of all directly outgoing nodes.
+        """Returns the set of all possible directly outgoing nodes.
 
-        The set is independent of the edge probability but honors the deleted
-        state.
+        The set doesn't includes nodes that are marked as deleted.  The set is
+        independent of the edge probability because any edge with a probability
+        greater 0.0 are included and edges with probability 0.0 can't be in the
+        graph.
         """
-        nodes = set()
-        for edge in self.outgoing_edges:
-            # Node can't be deleted as edge isn't deleted either.
-            nodes.add(edge.to_node)
-        return frozenset(nodes)
+        if self._deleted:
+            raise DeletedMemberInUseError(self)
+
+        # Check if cached data is available and still valid
+        graph_cache_level = self.graph._mark_deleted_cache_level  # noqa  # pylint: disable=protected-access
+        if self.__outgoing_nodes_property_cache is not None:
+            local_cache_level = self.__outgoing_nodes_property_cache_level
+            if local_cache_level == graph_cache_level:
+                # Return still valid cached result
+                return self.__outgoing_nodes_property_cache
+
+        # Calculate, cache and return result
+        ons = {edge.to_node for edge in self.outgoing_edges}
+        ons = frozenset(ons)
+        self.__outgoing_nodes_property_cache = ons
+        self.__outgoing_nodes_property_cache_level = graph_cache_level
+        return ons
+
+    def _outgoing_nodes_recursive(self, visited_nodes):
+        """Recursive helper method for the outgoing_nodes_recursive prop."""
+        if self._deleted:
+            raise DeletedMemberInUseError(self)
+
+        # Check if cached data is available and still valid
+        graph_cl = self.graph._mark_deleted_cache_level  # noqa  # pylint: disable=protected-access
+        if self.__outgoing_nodes_recursive_func_cache is not None:
+            local_cl = self.__outgoing_nodes_recursive_func_cache_level
+            if local_cl == graph_cl:
+                # Return still valid cached result and allow further caching.
+                return self.__outgoing_nodes_recursive_func_cache, True
+
+        # Check/update visited nodes
+        if self in visited_nodes:
+            # This node has been already visited and hence this node is part of
+            # a cycle.  Return an empty set to break the recursion.
+            # Furthermore disallow caching of this result as only the final
+            # result and not the intermediary results are cachable.
+            return EMPTY_FROZEN_SET, False
+        else:
+            visited_nodes.add(self)
+
+        # Calculate result.
+        cache_result = True
+        outgoing_nodes = self.outgoing_nodes
+        outgoing_nodes_recursive = outgoing_nodes.copy()
+        for outgoing_node in outgoing_nodes:
+            if self == outgoing_node:
+                continue  # Self-cycle -> No need to visit again
+            _result, _cache_result = outgoing_node._outgoing_nodes_recursive(  # noqa  # pylint: disable=protected-access
+                visited_nodes=visited_nodes)
+            if not _cache_result:
+                # The result wasn't cached because a cycle is somehow involved.
+                # As the incoming_node didn't cache its result don't cache this
+                # result either.  The result will then be cached once the final
+                # result has been determined.
+                cache_result = False
+            outgoing_nodes_recursive |= _result
+
+        # Cache (if allowed) and return result
+        result = frozenset(outgoing_nodes_recursive)
+        if cache_result:
+            self.__outgoing_nodes_recursive_func_cache = result
+            self.__outgoing_nodes_recursive_func_cache_level = graph_cl
+        return result, cache_result
+
+    @property
+    def outgoing_nodes_recursive(self):
+        """Returns the set of all possible directly and indir. outgoing nodes.
+
+        The set doesn't includes nodes that are marked as deleted.  The set is
+        independent of the edge probability because any edge with a probability
+        greater 0.0 are included and edges with probability 0.0 can't be in the
+        graph.
+
+        If the set includes this node itself then this node is part of a cycle.
+        """
+        result, cache_result = self._outgoing_nodes_recursive(
+            visited_nodes=set())
+        if not cache_result:
+            # Result hasn't been cached yet.  Cache the result as the overall
+            # result is always valid.
+            self.__outgoing_nodes_recursive_func_cache = result
+            gcl = self.graph._mark_deleted_cache_level  # noqa  # pylint: disable=protected-access
+            self.__outgoing_nodes_recursive_func_cache_level = gcl
+        return result
 
     def mark_deleted(self):
         """Marks the node and its incoming and outgoing edges as deleted."""
         if self._deleted:
             return  # Stop recursion
 
-        # Get all needed data from the node and then mark it as deleted.
+        # Get all needed data from the node before anything is marked deleted.
         incoming_edges = self.incoming_edges
         outgoing_edges = self.outgoing_edges
-        self._deleted = True
 
         # Mark the incoming/outgoing edges as deleted as edges can't exist
         # without their nodes.
@@ -403,6 +662,10 @@ class Node(Member):  # pylint: disable=abstract-method
             edge.mark_deleted()
         for edge in outgoing_edges:
             edge.mark_deleted()
+
+        # Finally mark the node itself as deleted.
+        self._deleted = True
+        self.graph._mark_deleted_cache_level += 1
 
 
 class Edge(Member):
@@ -453,13 +716,14 @@ class Edge(Member):
         need to be marked as deleted as long as there is no alternative edge
         that ensures that the hierarchie isn't violated.
         """
-        if self._deleted:
+        if self._deleted:  # pragma: no cover
             return  # Stop recursion
 
         # Get all needed data from the edge and then mark it as deleted.
         probability = self.probability
         from_node = self.from_node
         self._deleted = True
+        self.graph._mark_deleted_cache_level += 1
 
         # Check if the hierarchy is violated and mark the from-node as deleted
         # if necessary.

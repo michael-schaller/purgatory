@@ -75,13 +75,15 @@ class DpkgGraph(purgatory.graph.Graph):
                 the system's dpkg status database file.
         """
         # Private
-        self.__ignore_recommends = ignore_recommends
         self.__dpkg_db = dpkg_db
         self.__cache = None
         self.__installed_package_nodes = {}  # uid:node
         self.__installed_dependency_nodes = {}  # uid:node
         self.__dependency_edges = {}  # uid:edge
         self.__target_edges = {}  # uid:edge
+
+        # Protected
+        self._ignore_recommends = ignore_recommends
 
         # Init
         self.__init_cache()
@@ -113,7 +115,7 @@ class DpkgGraph(purgatory.graph.Graph):
         conf.clear("Dir::State")
         if self.__dpkg_db:
             conf["Dir::State::status"] = self.__dpkg_db
-        else:
+        else:  # pragma: no cover
             conf["Dir::State::status"] = dpkg_db
 
         # Initialize Apt with the given config.
@@ -152,7 +154,7 @@ class DpkgGraph(purgatory.graph.Graph):
             self.__installed_package_nodes[ipn.uid] = ipn
 
             # Add installed dependency nodes and dependency edges
-            if self.__ignore_recommends:
+            if self._ignore_recommends:
                 deps = ipn.version.get_dependencies("PreDepends", "Depends")
             else:
                 deps = ipn.version.get_dependencies(
@@ -210,23 +212,40 @@ class DpkgGraph(purgatory.graph.Graph):
         self.__init_nodes_and_edges_phase2()
 
     @property
+    def cache(self):
+        """Returns the Apt Cache object in use by this DpkgGraph object."""
+        return self.__cache
+
+    @property
     def installed_dependency_nodes(self):
-        """Returns a dict view (uid:node) of the installed dependency nodes."""
+        """Returns a dict view (uid:node) of the installed dependency nodes.
+
+        The dict view is unfiltered and thus contains deleted nodes.
+        """
         return self.__installed_dependency_nodes
 
     @property
     def installed_package_nodes(self):
-        """Returns a dict view (uid:node) of the installed package nodes."""
+        """Returns a dict view (uid:node) of the installed package nodes.
+
+        The dict view is unfiltered and thus contains deleted nodes.
+        """
         return self.__installed_package_nodes
 
     @property
     def dependency_edges(self):
-        """Returns a dict view (uid:node) of the dependency edges."""
+        """Returns a dict view (uid:node) of the dependency edges.
+
+        The dict view is unfiltered and thus contains deleted edges.
+        """
         return self.__dependency_edges
 
     @property
     def target_edges(self):
-        """Returns a dict view (uid:node) of the target edges in the graph."""
+        """Returns a dict view (uid:node) of the target edges in the graph.
+
+        The dict view is unfiltered and thus contains deleted edges.
+        """
         return self.__target_edges
 
 
@@ -383,9 +402,10 @@ class TargetEdge(purgatory.graph.OrEdge):
         pass  # TargetEdge implements its own __str__ method
 
     def __str__(self):
-        if abs(self.probability - 1.0) < purgatory.graph.EPSILON:
+        probability = self.probability
+        if abs(probability - 1.0) < purgatory.graph.EPSILON:
             return "%s --> %s" % (
                 self.from_node, self.to_node)
         else:
             return "%s --p=%.3f--> %s" % (
-                self.from_node, self.probability, self.to_node)
+                self.from_node, probability, self.to_node)
