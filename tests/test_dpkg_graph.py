@@ -147,13 +147,21 @@ class TestJessieDpkgGraph(unittest.TestCase, CommonDpkgGraphTestsMixin):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-        dpkg_db = os.path.abspath(
-            "test-data/dpkg/jessie-amd64-minbase-dpkg-status-db.gz")
-        self.graph = purgatory.dpkg_graph.DpkgGraph(dpkg_db=dpkg_db)
+        self.__graph = None
 
     def setUp(self):
         self.graph.unmark_deleted()
+
+    @property
+    def graph(self):
+        if self.__graph is None:
+            logging.debug(
+                "Initializing DpkgGraph (Jessie amd64 minbase) ...")
+            dpkg_db = os.path.abspath(
+                "test-data/dpkg/jessie-amd64-minbase-dpkg-status-db.gz")
+            self.__graph = purgatory.dpkg_graph.DpkgGraph(dpkg_db=dpkg_db)
+            logging.debug("DpkgGraph initialized")
+        return self.__graph
 
     def test_jessie_nodes_and_edges_count(self):
         graph = self.graph
@@ -178,14 +186,23 @@ class TestJessieIgnoreRecommendsDpkgGraph(
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-        dpkg_db = os.path.abspath(
-            "test-data/dpkg/jessie-amd64-minbase-dpkg-status-db.gz")
-        self.graph = purgatory.dpkg_graph.DpkgGraph(
-            ignore_recommends=True, dpkg_db=dpkg_db)
+        self.__graph = None
 
     def setUp(self):
         self.graph.unmark_deleted()
+
+    @property
+    def graph(self):
+        if self.__graph is None:
+            logging.debug(
+                "Initializing DpkgGraph (Jessie amd64 minbase no recommends) "
+                "...")
+            dpkg_db = os.path.abspath(
+                "test-data/dpkg/jessie-amd64-minbase-dpkg-status-db.gz")
+            self.__graph = purgatory.dpkg_graph.DpkgGraph(
+                ignore_recommends=True, dpkg_db=dpkg_db)
+            logging.debug("DpkgGraph initialized")
+        return self.__graph
 
     def test_jessie_nodes_and_edges_count(self):
         graph = self.graph
@@ -209,20 +226,25 @@ class TestSystemDpkgGraph(unittest.TestCase, CommonDpkgGraphTestsMixin):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.graph = None
-        self.__init_graph()
-
-    def __init_graph(self):
-        self.graph = purgatory.dpkg_graph.DpkgGraph(
-            dpkg_db="/var/lib/dpkg/status")
+        self.__graph = None
 
     def setUp(self):
         self.graph.unmark_deleted()
 
+    @property
+    def graph(self):
+        if self.__graph is None:
+            logging.debug(
+                "Initializing DpkgGraph (local system amd64 minbase) ...")
+            self.__graph = purgatory.dpkg_graph.DpkgGraph(
+                dpkg_db="/var/lib/dpkg/status")
+            logging.debug("DpkgGraph initialized")
+        return self.__graph
+
     @unittest.skip
     @tests.common.cprofile
     def test_profile(self):
-        self.__init_graph()
+        self.graph  # pylint: disable=pointless-statement
 
     @unittest.skip
     @tests.common.cprofile
@@ -242,12 +264,18 @@ class TestSystemIgnoreRecommendsDpkgGraph(
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.graph = None
-        self.__init_graph()
-
-    def __init_graph(self):
-        self.graph = purgatory.dpkg_graph.DpkgGraph(
-            ignore_recommends=True, dpkg_db="/var/lib/dpkg/status")
+        self.__graph = None
 
     def setUp(self):
         self.graph.unmark_deleted()
+
+    @property
+    def graph(self):
+        if self.__graph is None:
+            logging.debug(
+                "Initializing DpkgGraph (local system amd64 minbase no "
+                "recommends) ...")
+            self.__graph = purgatory.dpkg_graph.DpkgGraph(
+                ignore_recommends=True, dpkg_db="/var/lib/dpkg/status")
+            logging.debug("DpkgGraph initialized")
+        return self.__graph
