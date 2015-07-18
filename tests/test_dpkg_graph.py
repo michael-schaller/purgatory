@@ -141,6 +141,33 @@ class CommonDpkgGraphTestsMixin(object):
 
                 self.fail("Mark deleted mismatch!")
 
+    def test_in_cycle(self):
+        # Tests the assumption that if a node is in its recursive incoming
+        # nodes set that it also has to be in its recursive outgoing nodes set.
+        # A node is in both sets if it is part of a cycle.
+        for node in self.graph.nodes.values():
+            i = node in node.incoming_nodes_recursive
+            o = node in node.outgoing_nodes_recursive
+            self.assertEquals(i, o)
+
+    def test_head_nodes(self):
+        # Determines all layers of the graph by the help of the
+        # Graph.head_nodes_flat property and Node.mark_deleted() method.
+        # This test ensures that the all graphs can be dissected into layer
+        # by this method.  If this isn't the case within the layer_index limit
+        # then something is wrong with the Graph.head_nodes property.
+        graph = self.graph
+        layer = None
+        layer_index = -1
+
+        while layer or layer_index == -1:
+            layer_index += 1
+            self.assertLess(layer_index, 200)
+
+            layer = graph.head_nodes_flat
+            for node in layer:
+                node.mark_deleted()
+
 
 class TestJessieDpkgGraph(unittest.TestCase, CommonDpkgGraphTestsMixin):
     """Tests for purgatory.dpkg_graph with Jessie amd64 minbase data."""
@@ -234,21 +261,24 @@ class TestSystemDpkgGraph(unittest.TestCase, CommonDpkgGraphTestsMixin):
     @property
     def graph(self):
         if self.__graph is None:
-            logging.debug(
-                "Initializing DpkgGraph (local system amd64 minbase) ...")
-            self.__graph = purgatory.dpkg_graph.DpkgGraph(
-                dpkg_db="/var/lib/dpkg/status")
-            logging.debug("DpkgGraph initialized")
+            self.__init_graph()
         return self.__graph
 
-    @unittest.skip
-    @tests.common.cprofile
-    def test_profile(self):
-        self.graph  # pylint: disable=pointless-statement
+    def __init_graph(self):
+        logging.debug(
+            "Initializing DpkgGraph (local system amd64 minbase) ...")
+        self.__graph = purgatory.dpkg_graph.DpkgGraph(
+            dpkg_db="/var/lib/dpkg/status")
+        logging.debug("DpkgGraph initialized")
 
     @unittest.skip
     @tests.common.cprofile
-    def test_cycle(self):
+    def test_profile_graph_init(self):
+        self.__init_graph()
+
+    @unittest.skip
+    @tests.common.cprofile
+    def test_profile_in_cycle(self):
         # Tests the assumption that if a node is in its recursive incoming
         # nodes set that it also has to be in its recursive outgoing nodes set.
         # A node is in both sets if it is part of a cycle.
@@ -256,6 +286,26 @@ class TestSystemDpkgGraph(unittest.TestCase, CommonDpkgGraphTestsMixin):
             i = node in node.incoming_nodes_recursive
             o = node in node.outgoing_nodes_recursive
             self.assertEquals(i, o)
+
+    @unittest.skip
+    @tests.common.cprofile
+    def test_profile_head_nodes(self):
+        # Determines all layers of the graph by the help of the
+        # Graph.head_nodes_flat property and Node.mark_deleted() method.
+        # This test ensures that the all graphs can be dissected into layer
+        # by this method.  If this isn't the case within the layer_index limit
+        # then something is wrong with the Graph.head_nodes property.
+        graph = self.graph
+        layer = None
+        layer_index = -1
+
+        while layer or layer_index == -1:
+            layer_index += 1
+            self.assertLess(layer_index, 200)
+
+            layer = graph.head_nodes_flat
+            for node in layer:
+                node.mark_deleted()
 
 
 class TestSystemIgnoreRecommendsDpkgGraph(

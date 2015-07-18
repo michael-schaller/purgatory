@@ -126,7 +126,8 @@ class Graph(abc.ABC):
         self.__edges = {}  # uid:edge
 
         # Protected
-        self._mark_deleted_cache_level = 0
+        self._mark_deleted_incoming_cache_level = 0
+        self._mark_deleted_outgoing_cache_level = 0
 
         # Init
         super().__init__()
@@ -188,6 +189,94 @@ class Graph(abc.ABC):
         return self.__edges
 
     @property
+    def head_nodes(self):
+        """Returns the head (aka. leaf) nodes of the graph.
+
+        The graph can contain head nodes and head cycles.  Head nodes are nodes
+        without incoming edges.  Head cycles are nodes in a cycle without
+        incoming edges other the ones needed to form the cycle.
+
+        The return value is a set of set of nodes.  The inner sets contain a
+        single node for head nodes or multiple nodes in case of a head cycle.
+        The outer set contains all inner sets.
+        """
+        stage1_nodes_to_visit = set(self.__nodes.values())
+        stage2_nodes_to_visit = set()
+        stage3_nodes_to_visit = set()
+        heads = set()  # Return value
+
+        # Stage 1 - Identify the head nodes.
+        # A head node is a node that has no incoming edges.  As a head node has
+        # no incoming edges it also can't be in a cycle.
+        while stage1_nodes_to_visit:
+            node = stage1_nodes_to_visit.pop()
+            if node.deleted:
+                continue
+
+            if node.incoming_edges:
+                # Node isn't a head node but it could potentially be part of a
+                # head cycle - hence it will be revisited in stage 2.
+                stage2_nodes_to_visit.add(node)
+            else:
+                # Node is a head node.
+                heads.add(frozenset((node,)))
+
+                # Remove all nodes below this head node as these can't be head
+                # nodes/cycles and hence don't need to be visited in stage 1 or
+                # stage 2.
+                onrs = node.outgoing_nodes_recursive
+                stage1_nodes_to_visit -= onrs
+                stage2_nodes_to_visit -= onrs
+
+        # Stage 2 - Determine if a node could potentially be a head cycle.
+        while stage2_nodes_to_visit:
+            node = stage2_nodes_to_visit.pop()
+
+            # Test the shortcut if the outgoing_edges set is empty
+
+            if node.in_cycle:
+                # Node is in a cycle.  Add this node to the
+                # stage3_nodes_to_visit set to look at it in stage 3.
+                # One node of the cycle is enough to track the whole cycle.
+                stage3_nodes_to_visit.add(node)
+
+                # Don't visit any further nodes of this cycle or nodes below
+                # this cycle in stage 2.
+                onrs = node.outgoing_nodes_recursive
+                stage2_nodes_to_visit -= onrs
+
+                # Remove all nodes below this cycle as these can't be head
+                # nodes/cycles and thus don't need to be visited in stage 3.
+                below = onrs - node.cycle_nodes
+                stage3_nodes_to_visit -= below
+            else:
+                # Node isn't in a cycle and isn't a head node.  This node and
+                # all nodes below it can't be head nodes/cycles and hence don't
+                # need to be visited in stage 2 or 3.
+                onrs = node.outgoing_nodes_recursive
+                stage2_nodes_to_visit -= onrs
+                stage3_nodes_to_visit -= onrs
+
+        # Stage 3 - Determine head cycles.
+        # All the nodes that are left are part of head cycles.  All that's left
+        # to do is to add the cycle_nodes sets to the heads set.
+        for node in stage3_nodes_to_visit:
+            heads.add(node.cycle_nodes)
+
+        return frozenset(heads)
+
+    @property
+    def head_nodes_flat(self):
+        """Returns the head (aka. leaf) nodes of the graph in a flattened set.
+
+        This property behaves the same as the head_nodes property with the only
+        difference that the return value is a flattened set that only contains
+        nodes that are either head nodes or belong to a head cycle.
+        """
+        heads = self.head_nodes
+        return {node for head in heads for node in head}
+
+    @property
     def nodes(self):
         """Returns a dict view (uid:node) of the nodes in the graph.
 
@@ -206,51 +295,66 @@ class Graph(abc.ABC):
 
     def unmark_deleted(self):
         """Unmarks all graph members as deleted."""
-        for edge in self.__edges.values():
-            edge._deleted = False  # pylint: disable=protected-access
         for node in self.__nodes.values():
             node._deleted = False  # pylint: disable=protected-access
-        self._mark_deleted_cache_level += 1
+        for edge in self.__edges.values():
+            edge._deleted = False  # pylint: disable=protected-access
+        self._mark_deleted_incoming_cache_level += 1
+        self._mark_deleted_outgoing_cache_level += 1
 
 
 class Member(abc.ABC):
     """Abstract base class for members (nodes, edges) of a Graph."""
 
+    __uid_counter = 0
+    __uid_to_uid_intid = {}  # uid:uid_intid
+
     def __init__(self, uid):
-        # Private
-        self.__hash = hash(uid)
-        self.__uid = uid
-        self.__graph = None
+        # Get unique integer id based on the uid
+        uid_intid = Member.__uid_to_uid_intid.get(uid)
+        if uid_intid is None:
+            uid_intid = Member.__uid_counter
+            Member.__uid_to_uid_intid[uid] = uid_intid
+            Member.__uid_counter += 1
 
         # Protected
+        self._uid = uid
+        self._uid_intid = uid_intid
+        self._hash = hash(uid)
         self._str = None
         self._deleted = False
+        self._graph = None
 
         # Init
         super().__init__()
         self._init_str()
 
     def __eq__(self, other):
-        if self.__class__ != other.__class__:
-            return False
-        if self.__hash != hash(other):
-            return False
-        return self.__uid == other.uid
+        """Equals magic method with extreme speed optimizations.
+
+        This method is in an extreme hot code path and thus has been profiled
+        and optimized heavily.  As comparing the uid or hashes takes too long
+        """
+        try:
+            other_uid_intid = other._uid_intid  # noqa  # pylint: disable=protected-access
+        except AttributeError:  # pragma: no cover
+            return False  # Not a Member class
+        return self._uid_intid == other_uid_intid  # Unique id for all Members.
 
     def __ge__(self, other):
-        return self.__uid >= other.uid
+        return self._uid >= other.uid
 
     def __gt__(self, other):
-        return self.__uid > other.uid
+        return self._uid > other.uid
 
     def __hash__(self):
-        return self.__hash
+        return self._hash
 
     def __le__(self, other):
-        return self.__uid <= other.uid
+        return self._uid <= other.uid
 
     def __lt__(self, other):
-        return self.__uid < other.uid
+        return self._uid < other.uid
 
     def __ne__(self, other):
         return not self.__eq__(other)
@@ -259,7 +363,7 @@ class Member(abc.ABC):
         return self._str
 
     def __repr__(self):
-        return "%s(uid='%s')" % (self.__class__.__name__, self.__uid)
+        return "%s(uid='%s')" % (self.__class__.__name__, self._uid)
 
     @abc.abstractmethod
     def _init_str(self):
@@ -273,9 +377,9 @@ class Member(abc.ABC):
     @property
     def graph(self):
         """Returns the graph to which this member belongs."""
-        if not self.__graph:
+        if not self._graph:
             raise UnregisteredMemberInUseError(self)
-        return self.__graph
+        return self._graph
 
     @graph.setter
     def graph(self, graph):
@@ -283,14 +387,14 @@ class Member(abc.ABC):
 
         The graph can only be set once.
         """
-        if self.__graph:
+        if self._graph:
             raise MemberAlreadyRegisteredError(self)
-        self.__graph = graph
+        self._graph = graph
 
     @property
     def uid(self):
         """Returns the uid of the graph member."""
-        return self.__uid
+        return self._uid
 
     @abc.abstractmethod
     def mark_deleted(self):
@@ -415,8 +519,14 @@ class Node(Member):  # pylint: disable=abstract-method
         if self._deleted:
             raise DeletedMemberInUseError(self)
 
+        # Speed optimization because this is an extremely hot code path.
+        try:
+            graph = self._graph  # Direct access
+        except AttributeError:  # pragma: no cover
+            graph = self.graph  # Property
+
         # Check if cached data is available and still valid
-        graph_cache_level = self.graph._mark_deleted_cache_level  # noqa  # pylint: disable=protected-access
+        graph_cache_level = graph._mark_deleted_incoming_cache_level  # noqa  # pylint: disable=protected-access
         if self.__incoming_edges_property_cache is not None:
             local_cache_level = self.__incoming_edges_property_cache_level
             if local_cache_level == graph_cache_level:
@@ -442,8 +552,14 @@ class Node(Member):  # pylint: disable=abstract-method
         if self._deleted:
             raise DeletedMemberInUseError(self)
 
+        # Speed optimization because this is an extremely hot code path.
+        try:
+            graph = self._graph  # Direct access
+        except AttributeError:  # pragma: no cover
+            graph = self.graph  # Property
+
         # Check if cached data is available and still valid
-        graph_cache_level = self.graph._mark_deleted_cache_level  # noqa  # pylint: disable=protected-access
+        graph_cache_level = graph._mark_deleted_incoming_cache_level  # noqa  # pylint: disable=protected-access
         if self.__incoming_nodes_property_cache is not None:
             local_cache_level = self.__incoming_nodes_property_cache_level
             if local_cache_level == graph_cache_level:
@@ -462,8 +578,14 @@ class Node(Member):  # pylint: disable=abstract-method
         if self._deleted:
             raise DeletedMemberInUseError(self)
 
+        # Speed optimization because this is an extremely hot code path.
+        try:
+            graph = self._graph  # Direct access
+        except AttributeError:  # pragma: no cover
+            graph = self.graph  # Property
+
         # Check if cached data is available and still valid
-        graph_cl = self.graph._mark_deleted_cache_level  # noqa  # pylint: disable=protected-access
+        graph_cl = graph._mark_deleted_incoming_cache_level  # noqa  # pylint: disable=protected-access
         if self.__incoming_nodes_recursive_func_cache is not None:
             local_cl = self.__incoming_nodes_recursive_func_cache_level
             if local_cl == graph_cl:
@@ -521,7 +643,7 @@ class Node(Member):  # pylint: disable=abstract-method
             # Result hasn't been cached yet.  Cache the result as the overall
             # result is always valid.
             self.__incoming_nodes_recursive_func_cache = result
-            gcl = self.graph._mark_deleted_cache_level  # noqa  # pylint: disable=protected-access
+            gcl = self.graph._mark_deleted_incoming_cache_level  # noqa  # pylint: disable=protected-access
             self.__incoming_nodes_recursive_func_cache_level = gcl
         return result
 
@@ -537,8 +659,14 @@ class Node(Member):  # pylint: disable=abstract-method
         if self._deleted:
             raise DeletedMemberInUseError(self)
 
+        # Speed optimization because this is an extremely hot code path.
+        try:
+            graph = self._graph  # Direct access
+        except AttributeError:  # pragma: no cover
+            graph = self.graph  # Property
+
         # Check if cached data is available and still valid
-        graph_cache_level = self.graph._mark_deleted_cache_level  # noqa  # pylint: disable=protected-access
+        graph_cache_level = graph._mark_deleted_outgoing_cache_level  # noqa  # pylint: disable=protected-access
         if self.__outgoing_edges_property_cache is not None:
             local_cache_level = self.__outgoing_edges_property_cache_level
             if local_cache_level == graph_cache_level:
@@ -564,8 +692,14 @@ class Node(Member):  # pylint: disable=abstract-method
         if self._deleted:
             raise DeletedMemberInUseError(self)
 
+        # Speed optimization because this is an extremely hot code path.
+        try:
+            graph = self._graph  # Direct access
+        except AttributeError:  # pragma: no cover
+            graph = self.graph  # Property
+
         # Check if cached data is available and still valid
-        graph_cache_level = self.graph._mark_deleted_cache_level  # noqa  # pylint: disable=protected-access
+        graph_cache_level = graph._mark_deleted_outgoing_cache_level  # noqa  # pylint: disable=protected-access
         if self.__outgoing_nodes_property_cache is not None:
             local_cache_level = self.__outgoing_nodes_property_cache_level
             if local_cache_level == graph_cache_level:
@@ -584,8 +718,14 @@ class Node(Member):  # pylint: disable=abstract-method
         if self._deleted:
             raise DeletedMemberInUseError(self)
 
+        # Speed optimization because this is an extremely hot code path.
+        try:
+            graph = self._graph  # Direct access
+        except AttributeError:  # pragma: no cover
+            graph = self.graph  # Property
+
         # Check if cached data is available and still valid
-        graph_cl = self.graph._mark_deleted_cache_level  # noqa  # pylint: disable=protected-access
+        graph_cl = graph._mark_deleted_outgoing_cache_level  # noqa  # pylint: disable=protected-access
         if self.__outgoing_nodes_recursive_func_cache is not None:
             local_cl = self.__outgoing_nodes_recursive_func_cache_level
             if local_cl == graph_cl:
@@ -643,13 +783,13 @@ class Node(Member):  # pylint: disable=abstract-method
             # Result hasn't been cached yet.  Cache the result as the overall
             # result is always valid.
             self.__outgoing_nodes_recursive_func_cache = result
-            gcl = self.graph._mark_deleted_cache_level  # noqa  # pylint: disable=protected-access
+            gcl = self.graph._mark_deleted_outgoing_cache_level  # noqa  # pylint: disable=protected-access
             self.__outgoing_nodes_recursive_func_cache_level = gcl
         return result
 
     def mark_deleted(self):
         """Marks the node and its incoming and outgoing edges as deleted."""
-        if self._deleted:
+        if self._deleted:  # pragma: no cover
             return  # Stop recursion
 
         # Get all needed data from the node before anything is marked deleted.
@@ -657,7 +797,8 @@ class Node(Member):  # pylint: disable=abstract-method
         outgoing_edges = self.outgoing_edges
 
         # Mark the incoming/outgoing edges as deleted as edges can't exist
-        # without their nodes.
+        # without their nodes.  The respective cache level will be increased
+        # by the Edge.mark_delete() methods - if necessary.
         for edge in incoming_edges:
             edge.mark_deleted()
         for edge in outgoing_edges:
@@ -665,7 +806,6 @@ class Node(Member):  # pylint: disable=abstract-method
 
         # Finally mark the node itself as deleted.
         self._deleted = True
-        self.graph._mark_deleted_cache_level += 1
 
 
 class Edge(Member):
@@ -723,7 +863,16 @@ class Edge(Member):
         probability = self.probability
         from_node = self.from_node
         self._deleted = True
-        self.graph._mark_deleted_cache_level += 1
+
+        # Increase cache levels to invalidate the respective caches.  The
+        # outgoing caches only need to be recalculated if an OrEdge has been
+        # marked as deleted as marking an edge as deleted only affects the
+        # nodes and edges above (incoming).  In case of marking an OrEdge as
+        # deleted the outgoing_edges set of a node needs an update and hence
+        # the outgoing cache level needs to be bumped.
+        self.graph._mark_deleted_incoming_cache_level += 1
+        if probability < 1.0:
+            self.graph._mark_deleted_outgoing_cache_level += 1
 
         # Check if the hierarchy is violated and mark the from-node as deleted
         # if necessary.

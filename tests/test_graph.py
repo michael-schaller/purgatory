@@ -796,7 +796,7 @@ class TestGraph(unittest.TestCase):
             graph._add_edge(e3)
             graph._add_edge(e4)
 
-        Graph(init_nodes_and_edges)
+        g = Graph(init_nodes_and_edges)
 
         self.assertTrue(abs(e3.probability - 0.5) < purgatory.graph.EPSILON)
         self.assertTrue(abs(e4.probability - 0.5) < purgatory.graph.EPSILON)
@@ -814,6 +814,18 @@ class TestGraph(unittest.TestCase):
         self.assertTrue(abs(e4.probability - 1.0) < purgatory.graph.EPSILON)
         self.assertSetEqual(n1.outgoing_nodes, set((n3,)))
         self.assertSetEqual(n1.outgoing_nodes_recursive, set((n3, n5)))
+
+        # The graph consists of 3 layer.
+        g.unmark_deleted()
+        self.assertSetEqual(g.head_nodes_flat, set((n1, n2)))  # Layer 1
+        n1.mark_deleted()
+        n2.mark_deleted()
+        self.assertSetEqual(g.head_nodes_flat, set((n3,)))     # Layer 2
+        n3.mark_deleted()
+        self.assertSetEqual(g.head_nodes_flat, set((n4, n5)))  # Layer 3
+        n4.mark_deleted()
+        n5.mark_deleted()
+        self.assertSetEqual(g.head_nodes_flat, set())  # Nothing left
 
     def test_simple_self_cycle(self):
         n = Node()
@@ -857,6 +869,12 @@ class TestGraph(unittest.TestCase):
             self.assertTrue(e1.deleted)
             self.assertTrue(e2.deleted)
 
+        # The graph consists of 1 layer.
+        g.unmark_deleted()
+        self.assertSetEqual(g.head_nodes_flat, set((n1, n2)))
+        n1.mark_deleted()
+        self.assertSetEqual(g.head_nodes_flat, set())  # Nothing left
+
     def test_two_cycles(self):
         # n1 --e1--> n2 --e2--> n3 <--e4-- n4 <--e5-- n5
         #   \<-------e3--------/  \-------e6-------->/
@@ -898,6 +916,12 @@ class TestGraph(unittest.TestCase):
             for m2 in [n1, n2, n3, n4, n5, e1, e2, e3, e4, e5, e6]:
                 self.assertTrue(m2.deleted)
 
+        # The graph consists of 1 layer.
+        g.unmark_deleted()
+        self.assertSetEqual(g.head_nodes_flat, set((n1, n2, n3, n4, n5)))
+        n1.mark_deleted()
+        self.assertSetEqual(g.head_nodes_flat, set())  # Nothing left
+
     def test_break_cycle(self):
         # n1 ------e1------> n2 --e2(p=0.5)--> n3
         #   \<--e3(p=0.5)--/
@@ -918,7 +942,7 @@ class TestGraph(unittest.TestCase):
             graph._add_edge(e2)
             graph._add_edge(e3)
 
-        Graph(init_nodes_and_edges)
+        g = Graph(init_nodes_and_edges)
 
         self.assertTrue(n1.in_cycle)
         self.assertTrue(n2.in_cycle)
@@ -929,3 +953,89 @@ class TestGraph(unittest.TestCase):
         self.assertFalse(n1.in_cycle)
         self.assertFalse(n2.in_cycle)
         self.assertFalse(n3.in_cycle)
+
+        # The graph consists of 3 layers.
+        g.unmark_deleted()
+        self.assertSetEqual(g.head_nodes_flat, set((n1, n2)))  # Layer 1
+        n1.mark_deleted()  # Breaks cycle; doesn't mark n2 as deleted
+        self.assertTrue(n1.deleted)
+        self.assertFalse(n2.deleted)
+        self.assertSetEqual(g.head_nodes_flat, set((n2,)))  # Layer 2
+        n2.mark_deleted()
+        self.assertSetEqual(g.head_nodes_flat, set((n3,)))  # Layer 3
+        n3.mark_deleted()
+        self.assertSetEqual(g.head_nodes_flat, set())  # Nothing left
+
+    def test_two_disconnected_cycles(self):
+        # n1 --e1--> n2 -> e3 -> n3 --e4--> n4
+        #   \<--e2--/              \<--e5--/
+        n1 = Node(uid="n1")
+        n2 = Node(uid="n2")
+        n3 = Node(uid="n3")
+        n4 = Node(uid="n4")
+
+        e1 = Edge(n1, n2)
+        e2 = Edge(n2, n1)
+        e3 = Edge(n2, n3)
+        e4 = Edge(n3, n4)
+        e5 = Edge(n4, n3)
+
+        def init_nodes_and_edges(graph):
+            graph._add_node(n1)
+            graph._add_node(n2)
+            graph._add_node(n3)
+            graph._add_node(n4)
+
+            graph._add_edge(e1)
+            graph._add_edge(e2)
+            graph._add_edge(e3)
+            graph._add_edge(e4)
+            graph._add_edge(e5)
+
+        g = Graph(init_nodes_and_edges)
+
+        for n in [n1, n2, n3, n4]:
+            self.assertTrue(n.in_cycle)
+
+        self.assertSetEqual(n1.cycle_nodes, set((n1, n2)))
+        self.assertSetEqual(n2.cycle_nodes, set((n1, n2)))
+
+        self.assertSetEqual(n3.cycle_nodes, set((n3, n4)))
+        self.assertSetEqual(n4.cycle_nodes, set((n3, n4)))
+
+        # n3 and n4 are in a cycle and thus are a single unit.  Marking either
+        # one has to mark the other one as deleted as well and as they are the
+        # foundation of the graph the rest of the graph will be marked deleted
+        # as well.
+        n4.mark_deleted()
+        for n in [n1, n2, n3, n4, e1, e2, e3, e4, e5]:
+            self.assertTrue(n.deleted)
+        g.unmark_deleted()
+        n3.mark_deleted()
+        for n in [n1, n2, n3, n4, e1, e2, e3, e4, e5]:
+            self.assertTrue(n.deleted)
+
+        # The graph consists of 2 layers.
+        g.unmark_deleted()
+        self.assertSetEqual(g.head_nodes_flat, set((n1, n2)))  # Layer 1
+        n1.mark_deleted()
+        self.assertTrue(n2.deleted)
+        self.assertSetEqual(g.head_nodes_flat, set((n3, n4)))  # Layer 2
+        n3.mark_deleted()
+        self.assertTrue(n4.deleted)
+        self.assertSetEqual(g.head_nodes_flat, set())  # Nothing left
+
+        # Check head_nodes (non flat)
+        g.unmark_deleted()
+        heads = set(g.head_nodes)
+        self.assertEquals(len(heads), 1)
+        head = heads.pop()
+        self.assertSetEqual(head, set((n1, n2)))  # Layer 1
+        n1.mark_deleted()
+        heads = set(g.head_nodes)
+        self.assertEquals(len(heads), 1)
+        head = heads.pop()
+        self.assertSetEqual(head, set((n3, n4)))  # Layer 2
+        n3.mark_deleted()
+        heads = set(g.head_nodes)
+        self.assertEquals(len(heads), 0)  # Nothing left

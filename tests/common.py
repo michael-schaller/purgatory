@@ -18,6 +18,7 @@ def cprofile(test):
         stats.print_stats(40)
         #stats.print_callers(".*<file>.*<function>.*")
         #stats.print_callees(".*<file>.*<function>.*")
+        #stats.print_callees(".*graph.py.*outgoing_(nodes|edges).*")
         self.fail("fail to see profiler stats")
 
     return cprofile_wrapper
