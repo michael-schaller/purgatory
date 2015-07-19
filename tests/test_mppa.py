@@ -1,20 +1,15 @@
 """Tests for purgatory.mppa."""
 
 import importlib
-import unittest
 
 import purgatory.logging
-
 import purgatory.mppa
 import apt  # Always needs to be imported after purgatory.mppa.
 
-
-def setUpModule():
-    """Module-wide setup."""
-    purgatory.logging.configure_root_logger()
+import tests.common
 
 
-class TestMonkeyPatchPythonApt(unittest.TestCase):
+class TestMonkeyPatchPythonApt(tests.common.PurgatoryTestCase):
     """Tests for purgatory.mppa."""
 
     def test_imported_but_unpatched_error(self):

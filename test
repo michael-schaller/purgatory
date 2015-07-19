@@ -5,10 +5,11 @@ readonly white='\e[1;37m'
 readonly reset='\e[0m'
 
 # Run tests and do coverage analysis (including cleanup)
+# All command line arguments will be given to nose2
 echo ""
 echo -e "Running ${white}nose2${reset} ..."
 rm -f .coverage
-python3 -B $(which nose2-3) --config nose2.cfg --no-user-config
+python3 -B $(which nose2-3) --config nose2.cfg --no-user-config "$@"
 exitcode=$?
 rm -f .coverage
 

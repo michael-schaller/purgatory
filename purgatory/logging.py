@@ -1,5 +1,6 @@
 """Setup logging for Purgatory."""
 
+import inspect
 import logging
 import sys
 import traceback
@@ -8,11 +9,40 @@ import traceback
 class ModFuncFilter(logging.Filter):
     """Logging filter to combine module and funcName as modfunc.
 
-    This allows to have <module>.<function-name> with a fixed width.
+    This allows to have <module>.<func.-name> or <module>.<class>.<method-name>
+    with a fixed width.
     Example: %(modfunc)-50s
     """
     def filter(self, record):
-        record.modfunc = record.module + "." + record.funcName
+        stack = inspect.stack()
+        # Unwind stack until the logging module has been left to get the caller
+        # information.  Start with the second stack segment as the first is
+        # this filter method.
+        for segment in enumerate(stack[1:]):
+            caller_frame = segment[1][0]
+            caller_module = inspect.getmodule(caller_frame)
+            caller_module_name = caller_module.__name__
+            if caller_module_name != "logging":
+                break  # Found the caller.
+
+        # Get all the needed information from the caller traceback.
+        caller_traceback = inspect.getframeinfo(caller_frame)
+        caller_function_name = caller_traceback.function
+        caller_local_variables = caller_frame.f_locals
+        caller_class_name = None
+        if "self" in caller_local_variables:
+            # Looks like a method or property call.
+            caller_self = caller_local_variables["self"]
+            caller_class = caller_self.__class__
+            caller_class_name = caller_class.__name__
+
+        # Register modfunc.
+        if caller_class_name:
+            record.modfunc = ".".join((
+                caller_module_name, caller_class_name, caller_function_name))
+        else:
+            record.modfunc = ".".join((
+                caller_module_name, caller_function_name))
         return True
 
 

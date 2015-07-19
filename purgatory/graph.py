@@ -160,7 +160,7 @@ class Graph(abc.ABC):
 
     def _add_node(self, node):
         """Adds a node to the self.__nodes dict."""
-        if not isinstance(node, Node):
+        if not node.is_node_instance:
             raise NotANodeError(node)
         if node.uid in self.__nodes:
             raise MemberAlreadyRegisteredError(node)
@@ -291,7 +291,7 @@ class Graph(abc.ABC):
 
     def _add_edge(self, edge):
         """Adds an edge to the self.__edges dict."""
-        if not isinstance(edge, Edge):
+        if not edge.is_edge_instance:
             raise NotAnEdgeError(edge)
         if edge.uid in self.__edges:
             raise MemberAlreadyRegisteredError(edge)
@@ -380,6 +380,33 @@ class Member(abc.ABC):
         return self._deleted
 
     @property
+    def is_node_instance(self):  # pylint: disable=no-self-use
+        """Returns True if this object is a Node instance.
+
+        Python's isinstance is slow.  To avoid its slowness the is_*_instance
+        properties will be used for the most important classes.
+        """
+        return False
+
+    @property
+    def is_edge_instance(self):  # pylint: disable=no-self-use
+        """Returns True if this object is an Edge instance.
+
+        Python's isinstance is slow.  To avoid its slowness the is_*_instance
+        properties will be used for the most important classes.
+        """
+        return False
+
+    @property
+    def is_oredge_instance(self):  # pylint: disable=no-self-use
+        """Returns True if this object is an OrEdge instance.
+
+        Python's isinstance is slow.  To avoid its slowness the is_*_instance
+        properties will be used for the most important classes.
+        """
+        return False
+
+    @property
     def graph(self):
         """Returns the graph to which this member belongs."""
         if not self._graph:
@@ -436,7 +463,7 @@ class Node(Member):  # pylint: disable=abstract-method
         edges can be added once the graph has been fully initialized as the
         set of incoming edges on this node will be frozen.
         """
-        if not isinstance(edge, Edge):
+        if not edge.is_edge_instance:
             raise NotAnEdgeError(edge)
         if edge.to_node != self:
             raise NodeIsNotPartOfEdgeError(self, edge)
@@ -453,28 +480,22 @@ class Node(Member):  # pylint: disable=abstract-method
         Mixing these types inside the outgoing edges set is not allowed!
         """
         # Basic checks.
-        if not isinstance(edge, Edge):
+        if not edge.is_edge_instance:
             raise NotAnEdgeError(edge)
         if edge.from_node != self:
             raise NodeIsNotPartOfEdgeError(self, edge)
 
         # Add edge while ensuring that all outgoing edges are either of type
         # Edge or of type OrEdge.
-        edge_count = 0
-        or_edge_count = 0
-        for outgoing_edge in self.__outgoing_edges:
-            if isinstance(outgoing_edge, OrEdge):
-                or_edge_count += 1
+        if self.__outgoing_edges:
+            for sample_edge in self.__outgoing_edges:
+                break  # Just need one edge of the set
+            if sample_edge.is_oredge_instance:  # noqa  # pylint: disable=undefined-loop-variable
+                if not edge.is_oredge_instance:
+                    raise NotAnOrEdgeError(edge)
             else:
-                edge_count += 1
-        if isinstance(edge, OrEdge):
-            # Trying to add edge of type OrEdge
-            if edge_count > 0:
-                raise NotAnEdgeError(edge)
-        else:
-            # Trying to add edge of type Edge
-            if or_edge_count > 0:
-                raise NotAnOrEdgeError(edge)
+                if edge.is_oredge_instance:
+                    raise NotAnEdgeError(edge)
         self.__outgoing_edges.add(edge)
 
     def _freeze_incoming_edges(self):
@@ -502,29 +523,6 @@ class Node(Member):  # pylint: disable=abstract-method
         inrs = self.incoming_nodes_recursive
         onrs = self.outgoing_nodes_recursive
         return frozenset(inrs & onrs)
-
-    @property
-    def in_cycle(self):
-        """Returns True if this Node is part of a cycle."""
-        # Simple checks if this node can be part of a cycle.
-        if not self.incoming_edges:
-            return False
-        if not self.outgoing_edges:
-            return False
-
-        # Result-wise it doesn't matter if the tests uses the recursive
-        # incoming nodes set or the recursive outgoing nodes set - the result
-        # is in both cases the same.
-        # Performance-wise the recursive outgoing nodes set is typically in
-        # favor because of two reasons:
-        # 1) Graphs that model a hierarchy typically have a lot more nodes on
-        #    top than the bottom and hence the recursive outgoing nodes set is
-        #    often cheaper to calculate.
-        # 2) The caches for the outgoing sets are less often invalidated than
-        #    the caches for the incomings sets.
-        if self in self.outgoing_nodes_recursive:
-            return True
-        return False
 
     @property
     def incoming_edges(self):
@@ -665,6 +663,38 @@ class Node(Member):  # pylint: disable=abstract-method
             gcl = self.graph._mark_deleted_incoming_cache_level  # noqa  # pylint: disable=protected-access
             self.__incoming_nodes_recursive_func_cache_level = gcl
         return result
+
+    @property
+    def in_cycle(self):
+        """Returns True if this Node is part of a cycle."""
+        # Simple checks if this node can be part of a cycle.
+        if not self.incoming_edges:
+            return False
+        if not self.outgoing_edges:
+            return False
+
+        # Result-wise it doesn't matter if the tests uses the recursive
+        # incoming nodes set or the recursive outgoing nodes set - the result
+        # is in both cases the same.
+        # Performance-wise the recursive outgoing nodes set is typically in
+        # favor because of two reasons:
+        # 1) Graphs that model a hierarchy typically have a lot more nodes on
+        #    top than the bottom and hence the recursive outgoing nodes set is
+        #    often cheaper to calculate.
+        # 2) The caches for the outgoing sets are less often invalidated than
+        #    the caches for the incomings sets.
+        if self in self.outgoing_nodes_recursive:
+            return True
+        return False
+
+    @property
+    def is_node_instance(self):
+        """Returns True if this object is a Node instance.
+
+        Python's isinstance is slow.  To avoid its slowness the is_*_instance
+        properties will be used for the most important classes.
+        """
+        return True
 
     @property
     def outgoing_edges(self):
@@ -832,9 +862,9 @@ class Edge(Member):
 
     def __init__(self, from_node, to_node):
         # Check
-        if not isinstance(from_node, Node):
+        if not from_node.is_node_instance:
             raise NotANodeError(from_node)
-        if not isinstance(to_node, Node):
+        if not to_node.is_node_instance:
             raise NotANodeError(to_node)
 
         # Private
@@ -850,6 +880,15 @@ class Edge(Member):
     @abc.abstractmethod
     def _nodes_to_edge_uid(self, from_node, to_node):
         """Returns an uid for this directed edge based on the nodes."""
+
+    @property
+    def is_edge_instance(self):
+        """Returns True if this object is an Edge instance.
+
+        Python's isinstance is slow.  To avoid its slowness the is_*_instance
+        properties will be used for the most important classes.
+        """
+        return True
 
     @property
     def probability(self):
@@ -913,6 +952,24 @@ class OrEdge(Edge):  # pylint: disable=abstract-method
     of 1/1.  If there are two edges in the or-relationship both have a
     probability of 1/2.  If there are three edges they all have 1/3 and so on.
     """
+
+    @property
+    def is_edge_instance(self):
+        """Returns True if this object is an Edge instance.
+
+        Python's isinstance is slow.  To avoid its slowness the is_*_instance
+        properties will be used for the most important classes.
+        """
+        return True
+
+    @property
+    def is_oredge_instance(self):
+        """Returns True if this object is an OrEdge instance.
+
+        Python's isinstance is slow.  To avoid its slowness the is_*_instance
+        properties will be used for the most important classes.
+        """
+        return True
 
     @property
     def probability(self):

@@ -12,7 +12,9 @@ Simplifications:
 * Only installed target versions and their respective packages.
 """
 
+import errno
 import logging
+import os
 import types
 
 import purgatory.error
@@ -117,17 +119,34 @@ class DpkgGraph(purgatory.graph.Graph):
             conf["Dir::State::status"] = self.__dpkg_db
         else:  # pragma: no cover
             conf["Dir::State::status"] = dpkg_db
+        self.__dpkg_db = conf["Dir::State::status"]
+        logging.debug("dpkg status database: %s", self.__dpkg_db)
+
+        # As Purgatory uses a special configuration the Apt cache will be
+        # built in a temporary directory so that the valid cache on disk for
+        # the full configuration isn't overwritten.
+        purgatory_tmpdir = "/tmp/.purgatory"
+        try:
+            os.mkdir(purgatory_tmpdir)
+        except OSError as ex:  # pragma: no cover
+            if ex.errno != errno.EEXIST:
+                raise
+        os.chmod(purgatory_tmpdir, 0o777)  # Writable for all users
+        tmp_pkgcache_prefix = self.__dpkg_db.replace("/", "_").strip("_")
+        tmp_pkgcache = os.path.join(
+            purgatory_tmpdir, tmp_pkgcache_prefix + "_pkgcache.bin")
+        tmp_srcpkgcache = os.path.join(
+            purgatory_tmpdir, tmp_pkgcache_prefix + "_srcpkgcache.bin")
+        conf["Dir::Cache::pkgcache"] = tmp_pkgcache
+        conf["Dir::Cache::srcpkgcache"] = tmp_srcpkgcache
 
         # Initialize Apt with the given config.
         logging.debug("Initializing Apt system ...")
         apt_pkg.init_system()  # pylint: disable=no-member
 
         # Opening Apt cache. This step actually reads the dpkg status database.
-        # As Purgatory uses a special configuration the Apt cache will be
-        # built in memory so that the valid cache on disk for the full
-        # configuration isn't overwritten.
         logging.debug("Opening Apt cache ...")
-        cache = apt.cache.Cache(memonly=True)
+        cache = apt.cache.Cache()
 
         # Filter Apt cache to only contain installed packages.
         filtered_cache = apt.cache.FilteredCache(cache)

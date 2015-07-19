@@ -1,7 +1,14 @@
 """Common/shared code between tests."""
 
+# Tests don't require docstrings:
+# pylint: disable=missing-docstring
+
+
 import functools
 import pstats
+import unittest
+
+import purgatory.logging
 
 
 def cprofile(test):
@@ -18,7 +25,19 @@ def cprofile(test):
         stats.print_stats(40)
         #stats.print_callers(".*<file>.*<function>.*")
         #stats.print_callees(".*<file>.*<function>.*")
-        #stats.print_callees(".*graph.py.*outgoing_(nodes|edges).*")
+        #stats.print_callees(".*/graph.py.*__init__.*")
+        #stats.print_callees(".*/graph.py.*outgoing_(nodes|edges).*")
+        #stats.print_callees(
+        #    ".*/dpkg_graph.py.*__init_nodes_and_edges_phase1.*")
+        #stats.print_callees(".*/dpkg_graph.py.*__init__.*")
         self.fail("fail to see profiler stats")
 
     return cprofile_wrapper
+
+
+class PurgatoryTestCase(unittest.TestCase):
+    """Common TestCase base class for Purgatory."""
+
+    @classmethod
+    def setUpClass(cls):
+        purgatory.logging.configure_root_logger()

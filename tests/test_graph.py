@@ -7,10 +7,10 @@
 # pylint: disable=protected-access
 
 
-import unittest
-
 import purgatory.graph
 import purgatory.logging
+
+import tests.common
 
 
 class Graph(purgatory.graph.Graph):
@@ -75,12 +75,7 @@ class OrEdge(purgatory.graph.OrEdge):
         pass  # Custom __str__ implementation.
 
 
-def setUpModule():
-    """Module-wide setup."""
-    purgatory.logging.configure_root_logger()
-
-
-class TestGraph(unittest.TestCase):
+class TestGraph(tests.common.PurgatoryTestCase):
     """Tests for purgatory.graph."""
 
     def test_empty_graph(self):
