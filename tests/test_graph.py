@@ -817,15 +817,15 @@ class TestGraph(unittest.TestCase):
 
         # The graph consists of 3 layer.
         g.unmark_deleted()
-        self.assertSetEqual(g.head_nodes_flat, set((n1, n2)))  # Layer 1
+        self.assertSetEqual(g.leaf_nodes_flat, set((n1, n2)))  # Layer 1
         n1.mark_deleted()
         n2.mark_deleted()
-        self.assertSetEqual(g.head_nodes_flat, set((n3,)))     # Layer 2
+        self.assertSetEqual(g.leaf_nodes_flat, set((n3,)))     # Layer 2
         n3.mark_deleted()
-        self.assertSetEqual(g.head_nodes_flat, set((n4, n5)))  # Layer 3
+        self.assertSetEqual(g.leaf_nodes_flat, set((n4, n5)))  # Layer 3
         n4.mark_deleted()
         n5.mark_deleted()
-        self.assertSetEqual(g.head_nodes_flat, set())  # Nothing left
+        self.assertSetEqual(g.leaf_nodes_flat, set())  # Nothing left
 
     def test_simple_self_cycle(self):
         n = Node()
@@ -871,9 +871,9 @@ class TestGraph(unittest.TestCase):
 
         # The graph consists of 1 layer.
         g.unmark_deleted()
-        self.assertSetEqual(g.head_nodes_flat, set((n1, n2)))
+        self.assertSetEqual(g.leaf_nodes_flat, set((n1, n2)))
         n1.mark_deleted()
-        self.assertSetEqual(g.head_nodes_flat, set())  # Nothing left
+        self.assertSetEqual(g.leaf_nodes_flat, set())  # Nothing left
 
     def test_two_cycles(self):
         # n1 --e1--> n2 --e2--> n3 <--e4-- n4 <--e5-- n5
@@ -918,9 +918,9 @@ class TestGraph(unittest.TestCase):
 
         # The graph consists of 1 layer.
         g.unmark_deleted()
-        self.assertSetEqual(g.head_nodes_flat, set((n1, n2, n3, n4, n5)))
+        self.assertSetEqual(g.leaf_nodes_flat, set((n1, n2, n3, n4, n5)))
         n1.mark_deleted()
-        self.assertSetEqual(g.head_nodes_flat, set())  # Nothing left
+        self.assertSetEqual(g.leaf_nodes_flat, set())  # Nothing left
 
     def test_break_cycle(self):
         # n1 ------e1------> n2 --e2(p=0.5)--> n3
@@ -956,15 +956,15 @@ class TestGraph(unittest.TestCase):
 
         # The graph consists of 3 layers.
         g.unmark_deleted()
-        self.assertSetEqual(g.head_nodes_flat, set((n1, n2)))  # Layer 1
+        self.assertSetEqual(g.leaf_nodes_flat, set((n1, n2)))  # Layer 1
         n1.mark_deleted()  # Breaks cycle; doesn't mark n2 as deleted
         self.assertTrue(n1.deleted)
         self.assertFalse(n2.deleted)
-        self.assertSetEqual(g.head_nodes_flat, set((n2,)))  # Layer 2
+        self.assertSetEqual(g.leaf_nodes_flat, set((n2,)))  # Layer 2
         n2.mark_deleted()
-        self.assertSetEqual(g.head_nodes_flat, set((n3,)))  # Layer 3
+        self.assertSetEqual(g.leaf_nodes_flat, set((n3,)))  # Layer 3
         n3.mark_deleted()
-        self.assertSetEqual(g.head_nodes_flat, set())  # Nothing left
+        self.assertSetEqual(g.leaf_nodes_flat, set())  # Nothing left
 
     def test_two_disconnected_cycles(self):
         # n1 --e1--> n2 -> e3 -> n3 --e4--> n4
@@ -1017,25 +1017,25 @@ class TestGraph(unittest.TestCase):
 
         # The graph consists of 2 layers.
         g.unmark_deleted()
-        self.assertSetEqual(g.head_nodes_flat, set((n1, n2)))  # Layer 1
+        self.assertSetEqual(g.leaf_nodes_flat, set((n1, n2)))  # Layer 1
         n1.mark_deleted()
         self.assertTrue(n2.deleted)
-        self.assertSetEqual(g.head_nodes_flat, set((n3, n4)))  # Layer 2
+        self.assertSetEqual(g.leaf_nodes_flat, set((n3, n4)))  # Layer 2
         n3.mark_deleted()
         self.assertTrue(n4.deleted)
-        self.assertSetEqual(g.head_nodes_flat, set())  # Nothing left
+        self.assertSetEqual(g.leaf_nodes_flat, set())  # Nothing left
 
-        # Check head_nodes (non flat)
+        # Check leaf_nodes (non flat)
         g.unmark_deleted()
-        heads = set(g.head_nodes)
-        self.assertEquals(len(heads), 1)
-        head = heads.pop()
-        self.assertSetEqual(head, set((n1, n2)))  # Layer 1
+        leafs = set(g.leaf_nodes)
+        self.assertEquals(len(leafs), 1)
+        leaf = leafs.pop()
+        self.assertSetEqual(leaf, set((n1, n2)))  # Layer 1
         n1.mark_deleted()
-        heads = set(g.head_nodes)
-        self.assertEquals(len(heads), 1)
-        head = heads.pop()
-        self.assertSetEqual(head, set((n3, n4)))  # Layer 2
+        leafs = set(g.leaf_nodes)
+        self.assertEquals(len(leafs), 1)
+        leaf = leafs.pop()
+        self.assertSetEqual(leaf, set((n3, n4)))  # Layer 2
         n3.mark_deleted()
-        heads = set(g.head_nodes)
-        self.assertEquals(len(heads), 0)  # Nothing left
+        leafs = set(g.leaf_nodes)
+        self.assertEquals(len(leafs), 0)  # Nothing left

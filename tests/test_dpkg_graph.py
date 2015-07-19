@@ -150,12 +150,12 @@ class CommonDpkgGraphTestsMixin(object):
             o = node in node.outgoing_nodes_recursive
             self.assertEquals(i, o)
 
-    def test_head_nodes(self):
+    def test_leaf_nodes(self):
         # Determines all layers of the graph by the help of the
-        # Graph.head_nodes_flat property and Node.mark_deleted() method.
+        # Graph.leaf_nodes_flat property and Node.mark_deleted() method.
         # This test ensures that the all graphs can be dissected into layer
         # by this method.  If this isn't the case within the layer_index limit
-        # then something is wrong with the Graph.head_nodes property.
+        # then something is wrong with the Graph.leaf_nodes property.
         graph = self.graph
         layer = None
         layer_index = -1
@@ -164,7 +164,7 @@ class CommonDpkgGraphTestsMixin(object):
             layer_index += 1
             self.assertLess(layer_index, 200)
 
-            layer = graph.head_nodes_flat
+            layer = graph.leaf_nodes_flat
             for node in layer:
                 node.mark_deleted()
 
@@ -289,12 +289,12 @@ class TestSystemDpkgGraph(unittest.TestCase, CommonDpkgGraphTestsMixin):
 
     @unittest.skip
     @tests.common.cprofile
-    def test_profile_head_nodes(self):
+    def test_profile_leaf_nodes(self):
         # Determines all layers of the graph by the help of the
-        # Graph.head_nodes_flat property and Node.mark_deleted() method.
+        # Graph.leaf_nodes_flat property and Node.mark_deleted() method.
         # This test ensures that the all graphs can be dissected into layer
         # by this method.  If this isn't the case within the layer_index limit
-        # then something is wrong with the Graph.head_nodes property.
+        # then something is wrong with the Graph.leaf_nodes property.
         graph = self.graph
         layer = None
         layer_index = -1
@@ -303,7 +303,7 @@ class TestSystemDpkgGraph(unittest.TestCase, CommonDpkgGraphTestsMixin):
             layer_index += 1
             self.assertLess(layer_index, 200)
 
-            layer = graph.head_nodes_flat
+            layer = graph.leaf_nodes_flat
             for node in layer:
                 node.mark_deleted()
 

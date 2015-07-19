@@ -1,5 +1,10 @@
 """A hierarchical Graph with nodes and directed edges that have probabilities.
 
+The Graph implementation in this module is designed for hierarchical Graphs.
+The Graph can have cycles and can be disconnected.  The hierarchy is modeled
+after a wodden tree with relatively many leaf nodes on the top and relatively
+few leaf nodes on the bottom.
+
 A hierarchical Graph consists of Nodes and directed Edges that have
 probabilities.  An edge of type Edge has always the probability 1.0 and
 represents a mandatory edge.  Furthermore edges can also be in an
@@ -14,7 +19,7 @@ marked as deleted will be ignored by algorithms but be warned that some
 algorithms reset the deleted markers.  Whenever the deleted markers are changed
 there will be a note in the respective docstring.
 
-As a Graph is hierachical the mark_deleted methods on Nodes and Edges behave
+As a Graph is hierarchical the mark_deleted methods on Nodes and Edges behave
 differently than with classical/generic Graph implementations.  Marking a Node
 as deleted also marks its incoming and outgoing edges as deleted as edges can't
 exist without their nodes existing.  Marking an Edge as deleted typically marks
@@ -23,8 +28,8 @@ can't exist anymore without their foundation.  The only exception to this rule
 is made if the hierarchie isn't violated due to edges in an or-relationship.
 
 Cycles in the Graph are always treated as an undividable cluster of nodes.
-For an instance Graph.head_nodes returns the head (aka. leaf) nodes and the
-nodes within head cycles.
+For an instance Graph.leaf_nodes returns the leaf nodes and the nodes within
+leaf cycles.
 """
 
 import abc
@@ -189,24 +194,24 @@ class Graph(abc.ABC):
         return self.__edges
 
     @property
-    def head_nodes(self):
-        """Returns the head (aka. leaf) nodes of the graph.
+    def leaf_nodes(self):
+        """Returns the leaf nodes of the graph.
 
-        The graph can contain head nodes and head cycles.  Head nodes are nodes
-        without incoming edges.  Head cycles are nodes in a cycle without
+        The graph can contain leaf nodes and leaf cycles.  Leaf nodes are nodes
+        without incoming edges.  Leaf cycles are nodes in a cycle without
         incoming edges other the ones needed to form the cycle.
 
         The return value is a set of set of nodes.  The inner sets contain a
-        single node for head nodes or multiple nodes in case of a head cycle.
+        single node for leaf nodes or multiple nodes in case of a leaf cycle.
         The outer set contains all inner sets.
         """
         stage1_nodes_to_visit = set(self.__nodes.values())
         stage2_nodes_to_visit = set()
         stage3_nodes_to_visit = set()
-        heads = set()  # Return value
+        leafs = set()  # Return value
 
-        # Stage 1 - Identify the head nodes.
-        # A head node is a node that has no incoming edges.  As a head node has
+        # Stage 1 - Identify single leaf nodes.
+        # A leaf node is a node that has no incoming edges.  As a leaf node has
         # no incoming edges it also can't be in a cycle.
         while stage1_nodes_to_visit:
             node = stage1_nodes_to_visit.pop()
@@ -214,21 +219,21 @@ class Graph(abc.ABC):
                 continue
 
             if node.incoming_edges:
-                # Node isn't a head node but it could potentially be part of a
-                # head cycle - hence it will be revisited in stage 2.
+                # Node isn't a leaf node but it could potentially be part of a
+                # leaf cycle - hence it will be revisited in stage 2.
                 stage2_nodes_to_visit.add(node)
             else:
-                # Node is a head node.
-                heads.add(frozenset((node,)))
+                # Node is a leaf node.
+                leafs.add(frozenset((node,)))
 
-                # Remove all nodes below this head node as these can't be head
+                # Remove all nodes below this leaf node as these can't be leaf
                 # nodes/cycles and hence don't need to be visited in stage 1 or
                 # stage 2.
                 onrs = node.outgoing_nodes_recursive
                 stage1_nodes_to_visit -= onrs
                 stage2_nodes_to_visit -= onrs
 
-        # Stage 2 - Determine if a node could potentially be a head cycle.
+        # Stage 2 - Determine if a node could potentially be a leaf cycle.
         while stage2_nodes_to_visit:
             node = stage2_nodes_to_visit.pop()
 
@@ -245,36 +250,36 @@ class Graph(abc.ABC):
                 onrs = node.outgoing_nodes_recursive
                 stage2_nodes_to_visit -= onrs
 
-                # Remove all nodes below this cycle as these can't be head
+                # Remove all nodes below this cycle as these can't be leaf
                 # nodes/cycles and thus don't need to be visited in stage 3.
                 below = onrs - node.cycle_nodes
                 stage3_nodes_to_visit -= below
             else:
-                # Node isn't in a cycle and isn't a head node.  This node and
-                # all nodes below it can't be head nodes/cycles and hence don't
+                # Node isn't in a cycle and isn't a leaf node.  This node and
+                # all nodes below it can't be leaf nodes/cycles and hence don't
                 # need to be visited in stage 2 or 3.
                 onrs = node.outgoing_nodes_recursive
                 stage2_nodes_to_visit -= onrs
                 stage3_nodes_to_visit -= onrs
 
-        # Stage 3 - Determine head cycles.
-        # All the nodes that are left are part of head cycles.  All that's left
-        # to do is to add the cycle_nodes sets to the heads set.
+        # Stage 3 - Determine leaf cycles.
+        # All the nodes that are left are part of leaf cycles.  All that's left
+        # to do is to add the cycle_nodes sets to the leafs set.
         for node in stage3_nodes_to_visit:
-            heads.add(node.cycle_nodes)
+            leafs.add(node.cycle_nodes)
 
-        return frozenset(heads)
+        return frozenset(leafs)
 
     @property
-    def head_nodes_flat(self):
-        """Returns the head (aka. leaf) nodes of the graph in a flattened set.
+    def leaf_nodes_flat(self):
+        """Returns the leaf nodes of the graph in a flattened set.
 
-        This property behaves the same as the head_nodes property with the only
+        This property behaves the same as the leaf_nodes property with the only
         difference that the return value is a flattened set that only contains
-        nodes that are either head nodes or belong to a head cycle.
+        nodes that are either leaf nodes or belong to a leaf cycle.
         """
-        heads = self.head_nodes
-        return {node for head in heads for node in head}
+        leafs = self.leaf_nodes
+        return {node for leaf in leafs for node in leaf}
 
     @property
     def nodes(self):
@@ -501,9 +506,23 @@ class Node(Member):  # pylint: disable=abstract-method
     @property
     def in_cycle(self):
         """Returns True if this Node is part of a cycle."""
-        # It doesn't matter if the tests uses the recursive incoming nodes set
-        # or the outgoing one - the result is in both cases the same.
-        if self in self.incoming_nodes_recursive:
+        # Simple checks if this node can be part of a cycle.
+        if not self.incoming_edges:
+            return False
+        if not self.outgoing_edges:
+            return False
+
+        # Result-wise it doesn't matter if the tests uses the recursive
+        # incoming nodes set or the recursive outgoing nodes set - the result
+        # is in both cases the same.
+        # Performance-wise the recursive outgoing nodes set is typically in
+        # favor because of two reasons:
+        # 1) Graphs that model a hierarchy typically have a lot more nodes on
+        #    top than the bottom and hence the recursive outgoing nodes set is
+        #    often cheaper to calculate.
+        # 2) The caches for the outgoing sets are less often invalidated than
+        #    the caches for the incomings sets.
+        if self in self.outgoing_nodes_recursive:
             return True
         return False
 
@@ -600,7 +619,7 @@ class Node(Member):  # pylint: disable=abstract-method
             # result and not the intermediary results are cachable.
             return EMPTY_FROZEN_SET, False
         else:
-            visited_nodes.add(self)
+            visited_nodes |= set((self,))  # |= is faster than set.add
 
         # Calculate result.
         cache_result = True
@@ -740,7 +759,7 @@ class Node(Member):  # pylint: disable=abstract-method
             # result and not the intermediary results are cachable.
             return EMPTY_FROZEN_SET, False
         else:
-            visited_nodes.add(self)
+            visited_nodes |= set((self,))  # |= is faster than set.add
 
         # Calculate result.
         cache_result = True
