@@ -141,7 +141,7 @@ class Graph(abc.ABC):
         # Freeze
         self.__nodes = types.MappingProxyType(self.__nodes)
         self.__edges = types.MappingProxyType(self.__edges)
-        self.__freeze_nodes_incoming_outgoing_edges()
+        self.__freeze_nodes_incoming_and_outgoing_edges_and_nodes()
 
         # Check
         for edge in self.__edges.values():
@@ -152,11 +152,11 @@ class Graph(abc.ABC):
     def _init_nodes_and_edges(self):
         """Initializes the nodes of the graph."""
 
-    def __freeze_nodes_incoming_outgoing_edges(self):
-        """Freezes the incoming and outgoing edges sets of the nodes."""
+    def __freeze_nodes_incoming_and_outgoing_edges_and_nodes(self):
+        """Freezes the incoming and outgoing edges and node sets."""
         for node in self.__nodes.values():
-            node._freeze_incoming_edges()  # pylint: disable=protected-access
-            node._freeze_outgoing_edges()  # pylint: disable=protected-access
+            node._freeze_incoming_edges_and_nodes()  # noqa  # pylint: disable=protected-access
+            node._freeze_outgoing_edges_and_nodes()  # noqa  # pylint: disable=protected-access
 
     def _add_node(self, node):
         """Adds a node to the self.__nodes dict."""
@@ -302,6 +302,10 @@ class Graph(abc.ABC):
         """Unmarks all graph members as deleted."""
         for node in self.__nodes.values():
             node._deleted = False  # pylint: disable=protected-access
+            node._incoming_edges_without_deleted = set(node._incoming_edges)  # noqa  # pylint: disable=protected-access
+            node._incoming_nodes_without_deleted = set(node._incoming_nodes)  # noqa  # pylint: disable=protected-access
+            node._outgoing_edges_without_deleted = set(node._outgoing_edges)  # noqa  # pylint: disable=protected-access
+            node._outgoing_nodes_without_deleted = set(node._outgoing_nodes)  # noqa  # pylint: disable=protected-access
         for edge in self.__edges.values():
             edge._deleted = False  # pylint: disable=protected-access
         self._mark_deleted_incoming_cache_level += 1
@@ -438,20 +442,21 @@ class Node(Member):  # pylint: disable=abstract-method
 
     def __init__(self, uid):
         # Private
-        self.__incoming_edges = set()
-        self.__outgoing_edges = set()
-        self.__incoming_edges_property_cache = None
-        self.__incoming_edges_property_cache_level = 0
-        self.__incoming_nodes_property_cache = None
-        self.__incoming_nodes_property_cache_level = 0
         self.__incoming_nodes_recursive_func_cache = None
         self.__incoming_nodes_recursive_func_cache_level = 0
-        self.__outgoing_edges_property_cache = None
-        self.__outgoing_edges_property_cache_level = 0
-        self.__outgoing_nodes_property_cache = None
-        self.__outgoing_nodes_property_cache_level = 0
         self.__outgoing_nodes_recursive_func_cache = None
         self.__outgoing_nodes_recursive_func_cache_level = 0
+
+        # Protected
+        self._incoming_edges = set()
+        self._incoming_edges_without_deleted = set()
+        self._incoming_nodes = set()
+        self._incoming_nodes_without_deleted = None
+
+        self._outgoing_edges = set()
+        self._outgoing_edges_without_deleted = None
+        self._outgoing_nodes = set()
+        self._outgoing_nodes_without_deleted = None
 
         # Init
         super().__init__(uid)
@@ -467,7 +472,8 @@ class Node(Member):  # pylint: disable=abstract-method
             raise NotAnEdgeError(edge)
         if edge.to_node != self:
             raise NodeIsNotPartOfEdgeError(self, edge)
-        self.__incoming_edges.add(edge)
+        self._incoming_edges.add(edge)
+        self._incoming_nodes.add(edge.from_node)
 
     def _add_outgoing_edge(self, edge):
         """Registers an edge as outgoing edge with this node.
@@ -487,8 +493,8 @@ class Node(Member):  # pylint: disable=abstract-method
 
         # Add edge while ensuring that all outgoing edges are either of type
         # Edge or of type OrEdge.
-        if self.__outgoing_edges:
-            for sample_edge in self.__outgoing_edges:
+        if self._outgoing_edges:
+            for sample_edge in self._outgoing_edges:
                 break  # Just need one edge of the set
             if sample_edge.is_oredge_instance:  # noqa  # pylint: disable=undefined-loop-variable
                 if not edge.is_oredge_instance:
@@ -496,23 +502,32 @@ class Node(Member):  # pylint: disable=abstract-method
             else:
                 if edge.is_oredge_instance:
                     raise NotAnEdgeError(edge)
-        self.__outgoing_edges.add(edge)
+        self._outgoing_edges.add(edge)
+        self._outgoing_nodes.add(edge.to_node)
 
-    def _freeze_incoming_edges(self):
-        """Freezes the set of incoming edges.
-
-        This method will be called by the Graph constructor once the
-        intialization is nearly complete.
-        """
-        self.__incoming_edges = frozenset(self.__incoming_edges)
-
-    def _freeze_outgoing_edges(self):
-        """Freezes the set of incoming edges.
+    def _freeze_incoming_edges_and_nodes(self):
+        """Freezes the set of incoming edges and nodes.
 
         This method will be called by the Graph constructor once the
         intialization is nearly complete.
         """
-        self.__outgoing_edges = frozenset(self.__outgoing_edges)
+        self._incoming_edges = frozenset(self._incoming_edges)
+        self._incoming_edges_without_deleted = set(self._incoming_edges)
+
+        self._incoming_nodes = frozenset(self._incoming_nodes)
+        self._incoming_nodes_without_deleted = set(self._incoming_nodes)
+
+    def _freeze_outgoing_edges_and_nodes(self):
+        """Freezes the set of outgoing edges and nodes.
+
+        This method will be called by the Graph constructor once the
+        intialization is nearly complete.
+        """
+        self._outgoing_edges = frozenset(self._outgoing_edges)
+        self._outgoing_edges_without_deleted = set(self._outgoing_edges)
+
+        self._outgoing_nodes = frozenset(self._outgoing_nodes)
+        self._outgoing_nodes_without_deleted = set(self._outgoing_nodes)
 
     @property
     def cycle_nodes(self):
@@ -536,26 +551,7 @@ class Node(Member):  # pylint: disable=abstract-method
         if self._deleted:
             raise DeletedMemberInUseError(self)
 
-        # Speed optimization because this is an extremely hot code path.
-        try:
-            graph = self._graph  # Direct access
-        except AttributeError:  # pragma: no cover
-            graph = self.graph  # Property
-
-        # Check if cached data is available and still valid
-        graph_cache_level = graph._mark_deleted_incoming_cache_level  # noqa  # pylint: disable=protected-access
-        if self.__incoming_edges_property_cache is not None:
-            local_cache_level = self.__incoming_edges_property_cache_level
-            if local_cache_level == graph_cache_level:
-                # Return still valid cached result
-                return self.__incoming_edges_property_cache
-
-        # Calculate, cache and return result
-        ies = {edge for edge in self.__incoming_edges if not edge._deleted}  # noqa  # pylint: disable=protected-access
-        ies = frozenset(ies)
-        self.__incoming_edges_property_cache = ies
-        self.__incoming_edges_property_cache_level = graph_cache_level
-        return ies
+        return frozenset(self._incoming_edges_without_deleted)
 
     @property
     def incoming_nodes(self):
@@ -569,26 +565,7 @@ class Node(Member):  # pylint: disable=abstract-method
         if self._deleted:
             raise DeletedMemberInUseError(self)
 
-        # Speed optimization because this is an extremely hot code path.
-        try:
-            graph = self._graph  # Direct access
-        except AttributeError:  # pragma: no cover
-            graph = self.graph  # Property
-
-        # Check if cached data is available and still valid
-        graph_cache_level = graph._mark_deleted_incoming_cache_level  # noqa  # pylint: disable=protected-access
-        if self.__incoming_nodes_property_cache is not None:
-            local_cache_level = self.__incoming_nodes_property_cache_level
-            if local_cache_level == graph_cache_level:
-                # Return still valid cached result
-                return self.__incoming_nodes_property_cache
-
-        # Calculate, cache and return result
-        ins = {edge.from_node for edge in self.incoming_edges}
-        ins = frozenset(ins)
-        self.__incoming_nodes_property_cache = ins
-        self.__incoming_nodes_property_cache_level = graph_cache_level
-        return ins
+        return frozenset(self._incoming_nodes_without_deleted)
 
     def _incoming_nodes_recursive(self, visited_nodes):
         """Recursive helper method for the incoming_nodes_recursive prop."""
@@ -622,7 +599,8 @@ class Node(Member):  # pylint: disable=abstract-method
         # Calculate result.
         cache_result = True
         incoming_nodes = self.incoming_nodes
-        incoming_nodes_recursive = incoming_nodes.copy()
+        incoming_nodes_recursive = set()
+        incoming_nodes_recursive |= incoming_nodes  # Faster than set.copy
         for incoming_node in incoming_nodes:
             if self == incoming_node:
                 continue  # Self-cycle -> No need to visit again
@@ -708,26 +686,7 @@ class Node(Member):  # pylint: disable=abstract-method
         if self._deleted:
             raise DeletedMemberInUseError(self)
 
-        # Speed optimization because this is an extremely hot code path.
-        try:
-            graph = self._graph  # Direct access
-        except AttributeError:  # pragma: no cover
-            graph = self.graph  # Property
-
-        # Check if cached data is available and still valid
-        graph_cache_level = graph._mark_deleted_outgoing_cache_level  # noqa  # pylint: disable=protected-access
-        if self.__outgoing_edges_property_cache is not None:
-            local_cache_level = self.__outgoing_edges_property_cache_level
-            if local_cache_level == graph_cache_level:
-                # Return still valid cached result
-                return self.__outgoing_edges_property_cache
-
-        # Calculate, cache and return result
-        oes = {edge for edge in self.__outgoing_edges if not edge._deleted}  # noqa  # pylint: disable=protected-access
-        oes = frozenset(oes)
-        self.__outgoing_edges_property_cache = oes
-        self.__outgoing_edges_property_cache_level = graph_cache_level
-        return oes
+        return frozenset(self._outgoing_edges_without_deleted)
 
     @property
     def outgoing_nodes(self):
@@ -741,26 +700,7 @@ class Node(Member):  # pylint: disable=abstract-method
         if self._deleted:
             raise DeletedMemberInUseError(self)
 
-        # Speed optimization because this is an extremely hot code path.
-        try:
-            graph = self._graph  # Direct access
-        except AttributeError:  # pragma: no cover
-            graph = self.graph  # Property
-
-        # Check if cached data is available and still valid
-        graph_cache_level = graph._mark_deleted_outgoing_cache_level  # noqa  # pylint: disable=protected-access
-        if self.__outgoing_nodes_property_cache is not None:
-            local_cache_level = self.__outgoing_nodes_property_cache_level
-            if local_cache_level == graph_cache_level:
-                # Return still valid cached result
-                return self.__outgoing_nodes_property_cache
-
-        # Calculate, cache and return result
-        ons = {edge.to_node for edge in self.outgoing_edges}
-        ons = frozenset(ons)
-        self.__outgoing_nodes_property_cache = ons
-        self.__outgoing_nodes_property_cache_level = graph_cache_level
-        return ons
+        return frozenset(self._outgoing_nodes_without_deleted)
 
     def _outgoing_nodes_recursive(self, visited_nodes):
         """Recursive helper method for the outgoing_nodes_recursive prop."""
@@ -794,7 +734,8 @@ class Node(Member):  # pylint: disable=abstract-method
         # Calculate result.
         cache_result = True
         outgoing_nodes = self.outgoing_nodes
-        outgoing_nodes_recursive = outgoing_nodes.copy()
+        outgoing_nodes_recursive = set()
+        outgoing_nodes_recursive |= outgoing_nodes  # Faster than set.copy
         for outgoing_node in outgoing_nodes:
             if self == outgoing_node:
                 continue  # Self-cycle -> No need to visit again
@@ -841,9 +782,11 @@ class Node(Member):  # pylint: disable=abstract-method
         if self._deleted:  # pragma: no cover
             return  # Stop recursion
 
-        # Get all needed data from the node before anything is marked deleted.
-        incoming_edges = self.incoming_edges
-        outgoing_edges = self.outgoing_edges
+        # Get all needed data from the node and copy it before anything is
+        # marked deleted.  The copy is needed because these sets can be
+        # recursively alterated while this method iterates over them.
+        incoming_edges = self.incoming_edges.copy()
+        outgoing_edges = self.outgoing_edges.copy()
 
         # Mark the incoming/outgoing edges as deleted as edges can't exist
         # without their nodes.  The respective cache level will be increased
@@ -922,11 +865,34 @@ class Edge(Member):
         from_node = self.from_node
         self._deleted = True
 
+        # Update incoming caches, if needed.
+        # Update incoming edges cache set of the from node.
+        incoming_edges = self.__to_node._incoming_edges_without_deleted  # noqa  # pylint: disable=protected-access
+        if incoming_edges is not None:
+            incoming_edges.remove(self)
+
+        # Update incoming nodes cache set of the from node.
+        incoming_nodes = self.__to_node._incoming_nodes_without_deleted  # noqa  # pylint: disable=protected-access
+        if incoming_nodes is not None:
+            incoming_nodes.remove(self.from_node)
+
+        # Update outgoing caches, if needed.
+        if probability < 1.0:
+            # Update outgoing edges cache set of the from node.
+            outgoing_edges = self.__from_node._outgoing_edges_without_deleted  # noqa  # pylint: disable=protected-access
+            if outgoing_edges is not None:
+                outgoing_edges.remove(self)
+
+            # Update outgoing nodes cache set of the from node.
+            outgoing_nodes = self.__from_node._outgoing_nodes_without_deleted  # noqa  # pylint: disable=protected-access
+            if outgoing_nodes is not None:
+                outgoing_nodes.remove(self.to_node)
+
         # Increase cache levels to invalidate the respective caches.  The
-        # outgoing caches only need to be recalculated if an OrEdge has been
-        # marked as deleted as marking an edge as deleted only affects the
-        # nodes and edges above (incoming).  In case of marking an OrEdge as
-        # deleted the outgoing_edges set of a node needs an update and hence
+        # outgoing recursive cache only need to be recalculated if an OrEdge
+        # has been marked as deleted as marking an edge as deleted only affects
+        # the nodes and edges above (incoming).  In case of marking an OrEdge
+        # as deleted the outgoing_edges set of a node needs an update and hence
         # the outgoing cache level needs to be bumped.
         self.graph._mark_deleted_incoming_cache_level += 1
         if probability < 1.0:
