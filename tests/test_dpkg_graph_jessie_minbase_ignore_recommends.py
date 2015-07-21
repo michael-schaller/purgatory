@@ -55,3 +55,28 @@ class TestJessieIgnoreRecommendsDpkgGraph(
         # count as the minbase setup has only one installed package per
         # dependency - hence the same count.
         self.assertEquals(len(graph.target_edges), 138)
+
+    def test_jesse_layer_count(self):
+        # Determines all layers of the graph by the help of the
+        # Graph.leaf_nodes_flat property and Node.mark_deleted() method.
+        graph = self.graph
+        layer = None
+        layer_counts = []
+        layer_index = -1
+
+        while layer or layer_index == -1:
+            layer_index += 1
+            self.assertLess(layer_index, 200)
+
+            layer = graph.leaf_nodes_flat
+            if layer:
+                layer_counts.append(len(layer))
+            for node in layer:
+                node.mark_deleted()
+
+        # Data has been taken from this test after all other tests passed.
+        self.assertListEqual(
+            layer_counts,
+            [18, 23, 13, 14, 8, 16, 6, 17, 7, 9, 10, 4, 8, 5, 6, 4, 3, 2, 1, 1,
+             1, 1, 3, 3, 10, 6, 1, 1, 2, 2, 2, 2, 1, 1, 5, 4, 3, 2, 2, 2, 1, 7,
+             1, 1])
