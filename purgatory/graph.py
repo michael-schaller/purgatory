@@ -789,8 +789,8 @@ class Node(Member):  # pylint: disable=abstract-method
         outgoing_edges = self.outgoing_edges.copy()
 
         # Mark the incoming/outgoing edges as deleted as edges can't exist
-        # without their nodes.  The respective cache level will be increased
-        # by the Edge.mark_delete() methods - if necessary.
+        # without their nodes.  The respective caches will be update or
+        # invalidated by the Edge.mark_delete() methods - if necessary.
         for edge in incoming_edges:
             edge.mark_deleted()
         for edge in outgoing_edges:
@@ -865,7 +865,7 @@ class Edge(Member):
         from_node = self.from_node
         self._deleted = True
 
-        # Update incoming caches, if needed.
+        # Update/invalidate incoming caches.
         # Update incoming edges cache set of the from node.
         incoming_edges = self.__to_node._incoming_edges_without_deleted  # noqa  # pylint: disable=protected-access
         if incoming_edges is not None:
@@ -876,7 +876,16 @@ class Edge(Member):
         if incoming_nodes is not None:
             incoming_nodes.remove(self.from_node)
 
-        # Update outgoing caches, if needed.
+        # Increase cache level of the incoming recursive nodes to invalidate
+        # these caches graph-wide.  Unfortunately this seems to be the most
+        # performant way to do this as to directly invalidate all the involved
+        # caches one would need to calculate the outgoing recursive nodes set.
+        self.graph._mark_deleted_incoming_cache_level += 1
+
+        # Update/invalidate outgoing caches, if needed.  The outgoing caches
+        # only need to be recalculated if an OrEdge has been marked as deleted
+        # that has other OrEdges in parallel as marking an edge as deleted only
+        # affects the nodes and edges above (incoming).
         if probability < 1.0:
             # Update outgoing edges cache set of the from node.
             outgoing_edges = self.__from_node._outgoing_edges_without_deleted  # noqa  # pylint: disable=protected-access
@@ -888,14 +897,11 @@ class Edge(Member):
             if outgoing_nodes is not None:
                 outgoing_nodes.remove(self.to_node)
 
-        # Increase cache levels to invalidate the respective caches.  The
-        # outgoing recursive cache only need to be recalculated if an OrEdge
-        # has been marked as deleted as marking an edge as deleted only affects
-        # the nodes and edges above (incoming).  In case of marking an OrEdge
-        # as deleted the outgoing_edges set of a node needs an update and hence
-        # the outgoing cache level needs to be bumped.
-        self.graph._mark_deleted_incoming_cache_level += 1
-        if probability < 1.0:
+            # Increase cache level of the outgoing recursive nodes to
+            # invalidate these caches graph-wide.  Unfortunately this seems to
+            # be the most performant way to do this as to directly invalidate
+            # all the involved caches one would need to calculate the incoming
+            # recursive nodes set.
             self.graph._mark_deleted_outgoing_cache_level += 1
 
         # Check if the hierarchy is violated and mark the from-node as deleted
