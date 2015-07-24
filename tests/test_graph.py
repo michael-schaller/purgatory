@@ -768,11 +768,11 @@ class TestGraph(tests.common.PurgatoryTestCase):
         # n1 --e1--\       /--e3(p=0.5)--> n4
         #           --> n3
         # n2 --e2--/       \--e4(p=0.5)--> n5
-        n1 = Node()
-        n2 = Node()
-        n3 = Node()
-        n4 = Node()
-        n5 = Node()
+        n1 = Node(uid="n1")
+        n2 = Node(uid="n2")
+        n3 = Node(uid="n3")
+        n4 = Node(uid="n4")
+        n5 = Node(uid="n5")
 
         e1 = Edge(n1, n3)
         e2 = Edge(n2, n3)
