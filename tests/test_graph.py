@@ -718,15 +718,15 @@ class TestGraph(tests.common.PurgatoryTestCase):
         with self.assertRaises(purgatory.graph.EdgeWithZeroProbabilityError):
             Graph(init_nodes_and_edges)
 
-    def test_node_incoming_nodes_recursive(self):
+    def test_node_incoming_nodes_recursive1(self):
         # n1 --e1--\       /--e3(p=0.5)--> n4
         #           --> n3
         # n2 --e2--/       \--e4(p=0.5)--> n5
-        n1 = Node()
-        n2 = Node()
-        n3 = Node()
-        n4 = Node()
-        n5 = Node()
+        n1 = Node(uid="n1")
+        n2 = Node(uid="n2")
+        n3 = Node(uid="n3")
+        n4 = Node(uid="n4")
+        n5 = Node(uid="n5")
 
         e1 = Edge(n1, n3)
         e2 = Edge(n2, n3)
@@ -745,7 +745,28 @@ class TestGraph(tests.common.PurgatoryTestCase):
             graph._add_edge(e3)
             graph._add_edge(e4)
 
-        Graph(init_nodes_and_edges)
+        g = Graph(init_nodes_and_edges)
+
+        self.assertTrue(abs(e3.probability - 0.5) < purgatory.graph.EPSILON)
+        self.assertTrue(abs(e4.probability - 0.5) < purgatory.graph.EPSILON)
+
+        self.assertSetEqual(n3.incoming_nodes, set((n1, n2)))
+        self.assertSetEqual(n3.incoming_nodes_recursive, set((n1, n2)))
+
+        self.assertSetEqual(n4.incoming_nodes, set((n3,)))
+        self.assertSetEqual(n4.incoming_nodes_recursive, set((n1, n2, n3)))
+
+        self.assertSetEqual(n5.incoming_nodes, set((n3,)))
+        self.assertSetEqual(n5.incoming_nodes_recursive, set((n1, n2, n3)))
+
+        e3.mark_deleted()
+        self.assertTrue(abs(e4.probability - 1.0) < purgatory.graph.EPSILON)
+        self.assertSetEqual(n4.incoming_nodes, set())
+        self.assertSetEqual(n4.incoming_nodes_recursive, set())
+
+        # Test everything again after resetting the graph to make sure that
+        # cache update/invalidation works properly.
+        g.unmark_deleted()
 
         self.assertTrue(abs(e3.probability - 0.5) < purgatory.graph.EPSILON)
         self.assertTrue(abs(e4.probability - 0.5) < purgatory.graph.EPSILON)
@@ -810,7 +831,28 @@ class TestGraph(tests.common.PurgatoryTestCase):
         self.assertSetEqual(n1.outgoing_nodes, set((n3,)))
         self.assertSetEqual(n1.outgoing_nodes_recursive, set((n3, n5)))
 
-        # The graph consists of 3 layer.
+        # Test everything again after resetting the graph to make sure that
+        # cache update/invalidation works properly.
+        g.unmark_deleted()
+
+        self.assertTrue(abs(e3.probability - 0.5) < purgatory.graph.EPSILON)
+        self.assertTrue(abs(e4.probability - 0.5) < purgatory.graph.EPSILON)
+
+        self.assertSetEqual(n3.outgoing_nodes, set((n4, n5)))
+        self.assertSetEqual(n3.outgoing_nodes_recursive, set((n4, n5)))
+
+        self.assertSetEqual(n1.outgoing_nodes, set((n3,)))
+        self.assertSetEqual(n1.outgoing_nodes_recursive, set((n3, n4, n5)))
+
+        self.assertSetEqual(n2.outgoing_nodes, set((n3,)))
+        self.assertSetEqual(n2.outgoing_nodes_recursive, set((n3, n4, n5)))
+
+        e3.mark_deleted()
+        self.assertTrue(abs(e4.probability - 1.0) < purgatory.graph.EPSILON)
+        self.assertSetEqual(n1.outgoing_nodes, set((n3,)))
+        self.assertSetEqual(n1.outgoing_nodes_recursive, set((n3, n5)))
+
+        # The graph consists of 3 layers.
         g.unmark_deleted()
         self.assertSetEqual(g.leaf_nodes_flat, set((n1, n2)))  # Layer 1
         n1.mark_deleted()
@@ -820,6 +862,212 @@ class TestGraph(tests.common.PurgatoryTestCase):
         self.assertSetEqual(g.leaf_nodes_flat, set((n4, n5)))  # Layer 3
         n4.mark_deleted()
         n5.mark_deleted()
+        self.assertSetEqual(g.leaf_nodes_flat, set())  # Nothing left
+
+    def test_node_incoming_outgoing_nodes_recursive(self):
+        #    /--e1(p=0.5)--> n2 --e3-->\
+        # n1                             n4
+        #    \--e2(p=0.5)--> n3 --e4-->/
+        n1 = Node(uid="n1")
+        n2 = Node(uid="n2")
+        n3 = Node(uid="n3")
+        n4 = Node(uid="n4")
+
+        e1 = OrEdge(n1, n2)
+        e2 = OrEdge(n1, n3)
+        e3 = Edge(n2, n4)
+        e4 = Edge(n3, n4)
+
+        def init_nodes_and_edges(graph):
+            graph._add_node(n1)
+            graph._add_node(n2)
+            graph._add_node(n3)
+            graph._add_node(n4)
+
+            graph._add_edge(e1)
+            graph._add_edge(e2)
+            graph._add_edge(e3)
+            graph._add_edge(e4)
+
+        g = Graph(init_nodes_and_edges)
+
+        #    /--e1(p=0.5)--> n2 --e3-->\
+        # n1                             n4
+        #    \--e2(p=0.5)--> n3 --e4-->/
+        self.assertTrue(abs(e1.probability - 0.5) < purgatory.graph.EPSILON)
+        self.assertTrue(abs(e2.probability - 0.5) < purgatory.graph.EPSILON)
+
+        self.assertSetEqual(n1.outgoing_nodes, set((n2, n3)))
+        self.assertSetEqual(n1.outgoing_nodes_recursive, set((n2, n3, n4)))
+
+        self.assertSetEqual(n2.outgoing_nodes, set((n4,)))
+        self.assertSetEqual(n2.outgoing_nodes_recursive, set((n4,)))
+
+        self.assertSetEqual(n3.outgoing_nodes, set((n4,)))
+        self.assertSetEqual(n3.outgoing_nodes_recursive, set((n4,)))
+
+        self.assertSetEqual(n4.outgoing_nodes, set())
+        self.assertSetEqual(n4.outgoing_nodes_recursive, set())
+
+        self.assertSetEqual(n4.incoming_nodes, set((n2, n3)))
+        self.assertSetEqual(n4.incoming_nodes_recursive, set((n1, n2, n3)))
+
+        self.assertSetEqual(n3.incoming_nodes, set((n1,)))
+        self.assertSetEqual(n3.incoming_nodes_recursive, set((n1,)))
+
+        self.assertSetEqual(n2.incoming_nodes, set((n1,)))
+        self.assertSetEqual(n2.incoming_nodes_recursive, set((n1,)))
+
+        self.assertSetEqual(n1.incoming_nodes, set())
+        self.assertSetEqual(n1.incoming_nodes_recursive, set())
+
+        e1.mark_deleted()
+        #                    n2 --e3-->\
+        # n1                             n4
+        #    \--e2(p=1.0)--> n3 --e4-->/
+        self.assertTrue(abs(e2.probability - 1.0) < purgatory.graph.EPSILON)
+
+        self.assertSetEqual(n1.outgoing_nodes, set((n3,)))
+        self.assertSetEqual(n1.outgoing_nodes_recursive, set((n3, n4)))
+
+        self.assertSetEqual(n2.outgoing_nodes, set((n4,)))
+        self.assertSetEqual(n2.outgoing_nodes_recursive, set((n4,)))
+
+        self.assertSetEqual(n3.outgoing_nodes, set((n4,)))
+        self.assertSetEqual(n3.outgoing_nodes_recursive, set((n4,)))
+
+        self.assertSetEqual(n4.outgoing_nodes, set())
+        self.assertSetEqual(n4.outgoing_nodes_recursive, set())
+
+        self.assertSetEqual(n4.incoming_nodes, set((n2, n3)))
+        self.assertSetEqual(n4.incoming_nodes_recursive, set((n1, n2, n3)))
+
+        self.assertSetEqual(n3.incoming_nodes, set((n1,)))
+        self.assertSetEqual(n3.incoming_nodes_recursive, set((n1,)))
+
+        self.assertSetEqual(n2.incoming_nodes, set())
+        self.assertSetEqual(n2.incoming_nodes_recursive, set())
+
+        self.assertSetEqual(n1.incoming_nodes, set())
+        self.assertSetEqual(n1.incoming_nodes_recursive, set())
+
+        e4.mark_deleted()
+        #                    n2 --e3-->\
+        #                                n4
+        #
+        self.assertTrue(n1.deleted)
+        self.assertTrue(n3.deleted)
+        self.assertTrue(e1.deleted)
+        self.assertTrue(e2.deleted)
+        self.assertTrue(e4.deleted)
+
+        self.assertSetEqual(n2.outgoing_nodes, set((n4,)))
+        self.assertSetEqual(n2.outgoing_nodes_recursive, set((n4,)))
+
+        self.assertSetEqual(n4.outgoing_nodes, set())
+        self.assertSetEqual(n4.outgoing_nodes_recursive, set())
+
+        self.assertSetEqual(n4.incoming_nodes, set((n2,)))
+        self.assertSetEqual(n4.incoming_nodes_recursive, set((n2,)))
+
+        self.assertSetEqual(n2.incoming_nodes, set())
+        self.assertSetEqual(n2.incoming_nodes_recursive, set())
+
+        # Test everything again after resetting the graph to make sure that
+        # cache update/invalidation works properly.
+        g.unmark_deleted()
+
+        #    /--e1(p=0.5)--> n2 --e3-->\
+        # n1                             n4
+        #    \--e2(p=0.5)--> n3 --e4-->/
+        self.assertTrue(abs(e1.probability - 0.5) < purgatory.graph.EPSILON)
+        self.assertTrue(abs(e2.probability - 0.5) < purgatory.graph.EPSILON)
+
+        self.assertSetEqual(n1.outgoing_nodes, set((n2, n3)))
+        self.assertSetEqual(n1.outgoing_nodes_recursive, set((n2, n3, n4)))
+
+        self.assertSetEqual(n2.outgoing_nodes, set((n4,)))
+        self.assertSetEqual(n2.outgoing_nodes_recursive, set((n4,)))
+
+        self.assertSetEqual(n3.outgoing_nodes, set((n4,)))
+        self.assertSetEqual(n3.outgoing_nodes_recursive, set((n4,)))
+
+        self.assertSetEqual(n4.outgoing_nodes, set())
+        self.assertSetEqual(n4.outgoing_nodes_recursive, set())
+
+        self.assertSetEqual(n4.incoming_nodes, set((n2, n3)))
+        self.assertSetEqual(n4.incoming_nodes_recursive, set((n1, n2, n3)))
+
+        self.assertSetEqual(n3.incoming_nodes, set((n1,)))
+        self.assertSetEqual(n3.incoming_nodes_recursive, set((n1,)))
+
+        self.assertSetEqual(n2.incoming_nodes, set((n1,)))
+        self.assertSetEqual(n2.incoming_nodes_recursive, set((n1,)))
+
+        self.assertSetEqual(n1.incoming_nodes, set())
+        self.assertSetEqual(n1.incoming_nodes_recursive, set())
+
+        e1.mark_deleted()
+        #                    n2 --e3-->\
+        # n1                             n4
+        #    \--e2(p=1.0)--> n3 --e4-->/
+        self.assertTrue(abs(e2.probability - 1.0) < purgatory.graph.EPSILON)
+
+        self.assertSetEqual(n1.outgoing_nodes, set((n3,)))
+        self.assertSetEqual(n1.outgoing_nodes_recursive, set((n3, n4)))
+
+        self.assertSetEqual(n2.outgoing_nodes, set((n4,)))
+        self.assertSetEqual(n2.outgoing_nodes_recursive, set((n4,)))
+
+        self.assertSetEqual(n3.outgoing_nodes, set((n4,)))
+        self.assertSetEqual(n3.outgoing_nodes_recursive, set((n4,)))
+
+        self.assertSetEqual(n4.outgoing_nodes, set())
+        self.assertSetEqual(n4.outgoing_nodes_recursive, set())
+
+        self.assertSetEqual(n4.incoming_nodes, set((n2, n3)))
+        self.assertSetEqual(n4.incoming_nodes_recursive, set((n1, n2, n3)))
+
+        self.assertSetEqual(n3.incoming_nodes, set((n1,)))
+        self.assertSetEqual(n3.incoming_nodes_recursive, set((n1,)))
+
+        self.assertSetEqual(n2.incoming_nodes, set())
+        self.assertSetEqual(n2.incoming_nodes_recursive, set())
+
+        self.assertSetEqual(n1.incoming_nodes, set())
+        self.assertSetEqual(n1.incoming_nodes_recursive, set())
+
+        e4.mark_deleted()
+        #                    n2 --e3-->\
+        #                                n4
+        #
+        self.assertTrue(n1.deleted)
+        self.assertTrue(n3.deleted)
+        self.assertTrue(e1.deleted)
+        self.assertTrue(e2.deleted)
+        self.assertTrue(e4.deleted)
+
+        self.assertSetEqual(n2.outgoing_nodes, set((n4,)))
+        self.assertSetEqual(n2.outgoing_nodes_recursive, set((n4,)))
+
+        self.assertSetEqual(n4.outgoing_nodes, set())
+        self.assertSetEqual(n4.outgoing_nodes_recursive, set())
+
+        self.assertSetEqual(n4.incoming_nodes, set((n2,)))
+        self.assertSetEqual(n4.incoming_nodes_recursive, set((n2,)))
+
+        self.assertSetEqual(n2.incoming_nodes, set())
+        self.assertSetEqual(n2.incoming_nodes_recursive, set())
+
+        # The graph consists of 3 layers.
+        g.unmark_deleted()
+        self.assertSetEqual(g.leaf_nodes_flat, set((n1,)))  # Layer 1
+        n1.mark_deleted()
+        self.assertSetEqual(g.leaf_nodes_flat, set((n2, n3)))  # Layer 2
+        n2.mark_deleted()
+        n3.mark_deleted()
+        self.assertSetEqual(g.leaf_nodes_flat, set((n4,)))  # Layer 3
+        n4.mark_deleted()
         self.assertSetEqual(g.leaf_nodes_flat, set())  # Nothing left
 
     def test_simple_self_cycle(self):

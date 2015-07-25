@@ -306,16 +306,21 @@ class Graph(abc.ABC):
 
     def unmark_deleted(self):
         """Unmarks all graph members as deleted."""
+        self._mark_deleted_incoming_cache_level += 1
+        graph_in_cl = self._mark_deleted_incoming_cache_level
+        self._mark_deleted_outgoing_cache_level += 1
+        graph_out_cl = self._mark_deleted_outgoing_cache_level
+
         for node in self.__nodes.values():
             node._deleted = False  # pylint: disable=protected-access
             node._incoming_edges_without_deleted = set(node._incoming_edges)  # noqa  # pylint: disable=protected-access
             node._incoming_nodes_without_deleted = set(node._incoming_nodes)  # noqa  # pylint: disable=protected-access
+            node._incoming_nodes_recursive_invalidated_at_cl = graph_in_cl  # noqa  # pylint: disable=protected-access
             node._outgoing_edges_without_deleted = set(node._outgoing_edges)  # noqa  # pylint: disable=protected-access
             node._outgoing_nodes_without_deleted = set(node._outgoing_nodes)  # noqa  # pylint: disable=protected-access
+            node._outgoing_nodes_recursive_invalidated_at_cl = graph_out_cl  # noqa  # pylint: disable=protected-access
         for edge in self.__edges.values():
             edge._deleted = False  # pylint: disable=protected-access
-        self._mark_deleted_incoming_cache_level += 1
-        self._mark_deleted_outgoing_cache_level += 1
 
 
 class Member(abc.ABC):
@@ -453,11 +458,13 @@ class Node(Member):  # pylint: disable=abstract-method
         self._outgoing_edges = set()
         self._outgoing_nodes = set()
 
-        # Private/protected caches
+        # Protected caches
         self._incoming_edges_without_deleted = None
         self._incoming_nodes_without_deleted = None
-        self.__incoming_nodes_recursive = None
-        self.__incoming_nodes_recursive_cache_level = 0
+        self._incoming_nodes_recursive_cache = None
+        self._incoming_nodes_recursive_cache_level = 0
+        self._incoming_nodes_recursive_built_at_cl = 0
+        self._incoming_nodes_recursive_invalidated_at_cl = 0
         self._outgoing_edges_without_deleted = None
         self._outgoing_nodes_without_deleted = None
         self._outgoing_nodes_recursive_cache = None
@@ -574,6 +581,37 @@ class Node(Member):  # pylint: disable=abstract-method
 
         return frozenset(self._incoming_nodes_without_deleted)
 
+    def _incoming_nodes_recursive_get_cache(self, graph_cl):
+        """Returns the valid cached result for incoming_nodes_recursive.
+
+        If there is no cached result or it is no longer valid None is returned.
+
+        Args:
+            graph_cl: The current graph incoming cache level.
+        """
+        inrc = self._incoming_nodes_recursive_cache
+        if inrc is None:
+            return None  # No cached result.
+
+        local_cl = self._incoming_nodes_recursive_cache_level
+        if local_cl == graph_cl:
+            return inrc  # Cached result is still valid.
+
+        # Local and graph cache level differ.  Check if the cached result is
+        # still valid by checking if the cached result of this and each node
+        # that contributed to this cached result is still valid.
+        to_check = inrc | set((self,))
+        for node in to_check:
+            built_at = node._incoming_nodes_recursive_built_at_cl  # noqa  # pylint: disable=protected-access
+            invalidated_at = node._incoming_nodes_recursive_invalidated_at_cl  # noqa  # pylint: disable=protected-access
+            if invalidated_at > built_at:
+                return None  # Cached result is no longer valid!
+
+        # Cached result is still valid.  Update the local cache level to avoid
+        # needless reiteration of this check and then return the cached result.
+        self._incoming_nodes_recursive_cache_level = graph_cl
+        return inrc
+
     def _incoming_nodes_recursive(self, graph_cl):
         """Helper function to determine the incoming recursive nodes.
 
@@ -602,17 +640,16 @@ class Node(Member):  # pylint: disable=abstract-method
 
                 # Determine if the child node has a valid cache and if this is
                 # the case use it.
-                inrc = cn.__incoming_nodes_recursive  # noqa  # pylint: disable=protected-access
+                inrc = cn._incoming_nodes_recursive_get_cache(  # noqa  # pylint: disable=protected-access
+                    graph_cl=graph_cl)
                 if inrc is not None:
-                    local_cl = cn.__incoming_nodes_recursive_cache_level  # noqa  # pylint: disable=protected-access
-                    if local_cl == graph_cl:
-                        # The child node has a valid cache.  Add all child
-                        # nodes to the result, update visited and to visit
-                        # nodes and then continue with the next child node.
-                        incoming_nodes_recursive |= inrc
-                        visited |= inrc
-                        to_visit -= inrc
-                        continue
+                    # The child node has a valid cache.  Add all child nodes to
+                    # the result, update visited and to visit nodes and then
+                    # continue with the next child node.
+                    incoming_nodes_recursive |= inrc
+                    visited |= inrc
+                    to_visit -= inrc
+                    continue
 
                 # Child node doesn't have a valid cache.  Record that it still
                 # needs to be visited.
@@ -620,8 +657,9 @@ class Node(Member):  # pylint: disable=abstract-method
 
         # Cache the result.
         incoming_nodes_recursive = frozenset(incoming_nodes_recursive)
-        self.__incoming_nodes_recursive = incoming_nodes_recursive
-        self.__incoming_nodes_recursive_cache_level = graph_cl
+        self._incoming_nodes_recursive_cache = incoming_nodes_recursive
+        self._incoming_nodes_recursive_cache_level = graph_cl
+        self._incoming_nodes_recursive_built_at_cl = graph_cl
 
     @property
     def incoming_nodes_recursive(self):
@@ -649,12 +687,11 @@ class Node(Member):  # pylint: disable=abstract-method
             visited |= set((node,))  # Faster than visited.add(cn)
 
             # Check if the node has a valid cache.
-            if node.__incoming_nodes_recursive is not None:  # noqa  # pylint: disable=protected-access
-                local_cl = node.__incoming_nodes_recursive_cache_level  # noqa  # pylint: disable=protected-access
-                if local_cl == graph_cl:
-                    # The node has a valid cache and thus it and all nodes
-                    # below it aren't of interest to stage 1.
-                    continue
+            inrc = node._incoming_nodes_recursive_get_cache(graph_cl=graph_cl)  # noqa  # pylint: disable=protected-access
+            if inrc is not None:
+                # The node has a valid cache and thus it and all nodes below it
+                # aren't of interest to stage 1.
+                continue
 
             # This node doesn't have the incoming_nodes_recursive property
             # cached.  Record that the node has the cache missing and for all
@@ -671,7 +708,7 @@ class Node(Member):  # pylint: disable=abstract-method
             missing_cache, key=missing_cache.get, reverse=True)
         for node in missing_cache_nodes:
             node._incoming_nodes_recursive(graph_cl=graph_cl)  # noqa  # pylint: disable=protected-access
-        return self.__incoming_nodes_recursive
+        return self._incoming_nodes_recursive_cache
 
     @property
     def in_cycle(self):
@@ -967,10 +1004,14 @@ class Edge(Member):
             incoming_nodes -= set((from_node,))
 
         # Increase cache level of the incoming recursive nodes to invalidate
-        # these caches graph-wide.  Unfortunately this seems to be the most
-        # performant way to do this as to directly invalidate all the involved
-        # caches one would need to calculate the outgoing recursive nodes set.
+        # these caches graph-wide.  Once a single cache will be accessed it
+        # uses this information to detect that the cache could be invalid and
+        # then evaluates if the cache is still valid by its built at cache
+        # level and invalidated at cache level fields.  See the
+        # _incoming_nodes_recursive_get_cache method for details.
         graph._mark_deleted_incoming_cache_level += 1
+        graph_cl = graph._mark_deleted_incoming_cache_level  # noqa  # pylint: disable=protected-access
+        from_node._incoming_nodes_recursive_invalidated_at_cl = graph_cl  # noqa  # pylint: disable=protected-access
 
         # Update/invalidate outgoing caches, if needed.  The outgoing caches
         # only need to be recalculated if an OrEdge has been marked as deleted
@@ -996,7 +1037,7 @@ class Edge(Member):
             # accessed it uses this information to detect that the cache could
             # be invalid and then evaluates if the cache is still valid by its
             # built at cache level and invalidated at cache level fields.
-            # see the _outgoing_nodes_recursive_cache method for details.
+            # see the _outgoing_nodes_recursive_get_cache method for details.
             graph._mark_deleted_outgoing_cache_level += 1
             graph_cl = graph._mark_deleted_outgoing_cache_level  # noqa  # pylint: disable=protected-access
             from_node._outgoing_nodes_recursive_invalidated_at_cl = graph_cl  # noqa  # pylint: disable=protected-access
