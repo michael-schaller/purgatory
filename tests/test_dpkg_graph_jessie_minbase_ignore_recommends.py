@@ -4,6 +4,7 @@
 # pylint: disable=missing-docstring
 
 
+import json
 import logging
 import os.path
 
@@ -80,3 +81,33 @@ class TestJessieIgnoreRecommendsDpkgGraph(
             [18, 23, 13, 14, 8, 16, 6, 17, 7, 9, 10, 4, 8, 5, 6, 4, 3, 2, 1, 1,
              1, 1, 3, 3, 10, 6, 1, 1, 2, 2, 2, 2, 1, 1, 5, 4, 3, 2, 2, 2, 1, 7,
              1, 1])
+
+    def test_jessie_mark_members_including_obsolete_deleted(self):
+        graph = self.graph
+        result = {}
+
+        # For each leaf calculate the nodes that would be marked removed if
+        # the leaf would be removed including the obsolete nodes.
+        leafs = graph.leaf_nodes
+        for leaf in leafs:
+            # Determine the InstalledPackageNodes that have been marked as
+            # deleted.
+            graph.mark_members_including_obsolete_deleted(leaf)
+            deleted = [str(node) for node in graph.deleted_nodes if isinstance(
+                node, purgatory.dpkg_graph.InstalledPackageNode)]
+            deleted.sort()
+
+            leaf = [str(node) for node in leaf]
+            leaf.sort()
+            leaf_str = "[%s]" % ", ".join(leaf)
+
+            result[leaf_str] = deleted  # Key must be a string for json.
+
+            # Reset graph.
+            graph.unmark_deleted()
+
+        with open("test-data/dpkg/jessie-amd64-minbase-leafs-" +
+                  "ignore-recommends.json", "r") as f:
+            content = f.read()
+        prev_result = json.loads(content)
+        self.assertDictEqual(result, prev_result)

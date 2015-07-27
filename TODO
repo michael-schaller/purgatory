@@ -38,8 +38,4 @@ MS:
   python-apt versions are left that need to be supported remove the mppa
   module.
 
-* The dict views that give access to the nodes and edges of the Graph and
-  DpkgGraph classes should also filter out deleted nodes and edges.  For the
-  time being the docstring only mentions that these are unfiltered.
-
 * Try to get rid of as many no cover statements as possible.

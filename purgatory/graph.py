@@ -79,6 +79,15 @@ class NotAnOrEdgeError(GraphError):
         super().__init__(msg)
 
 
+class NotMemberOfGraphError(GraphError):
+    """Raised if a member in use doesn't belong to this graph."""
+
+    def __init__(self, member):
+        msg = "Member '%s' with uid '%s' doesn't belong to this graph!" % (
+            member.__class__, member.uid)
+        super().__init__(msg)
+
+
 class MemberAlreadyRegisteredError(GraphError):
     """Raised if a member has been already registered in the graph."""
 
@@ -170,8 +179,8 @@ class Graph(abc.ABC):
             raise NotANodeError(node)
         if node.uid in self.__nodes:
             raise MemberAlreadyRegisteredError(node)
-        self.__nodes[node.uid] = node
         node.graph = self
+        self.__nodes[node.uid] = node
 
     def _add_node_dedup(self, node):
         """Add the given node to the self.__nodes dict if it isn't tracked yet.
@@ -190,6 +199,16 @@ class Graph(abc.ABC):
         else:
             self._add_node(node)
             return (node, False)  # Not a duplicate
+
+    @property
+    def deleted_edges(self):
+        """Returns a set of the edges in the graph marked as deleted."""
+        return {edge for edge in self.__edges.values() if edge._deleted}  # noqa  # pylint: disable=protected-access
+
+    @property
+    def deleted_nodes(self):
+        """Returns a set of the nodes in the graph marked as deleted."""
+        return {node for node in self.__nodes.values() if node._deleted}  # noqa  # pylint: disable=protected-access
 
     @property
     def edges(self):
@@ -301,8 +320,99 @@ class Graph(abc.ABC):
             raise NotAnEdgeError(edge)
         if edge.uid in self.__edges:
             raise MemberAlreadyRegisteredError(edge)
-        self.__edges[edge.uid] = edge
         edge.graph = self
+        self.__edges[edge.uid] = edge
+
+    def mark_members_deleted(self, members):
+        """Marks the given graph members as deleted."""
+        for m in members:
+            if m.graph != self:
+                raise NotMemberOfGraphError(m)
+            m.mark_deleted()
+
+    def mark_members_including_obsolete_deleted(self, members):
+        """Marks the given graph members and obsoleted members as deleted.
+
+        This method marks the given graph members and the obsoleted members by
+        the mark deleted operation of the given members recursively as deleted.
+        A node is considered obsolete if it had only incoming edges from the
+        nodes so far marked as deleted.  Furthermore cycles are counted as a
+        single graph member and hence whole cycles can be obsolete as well.
+
+        Example:
+        n1 --\
+        n2 --> n4 --\
+        n3 ---------> n5
+
+        If n1 and n2 in the example will be marked as deleted then n4 is marked
+        as deleted as well as n4 was only there as foundation for n1 and n2 but
+        it is obsolete as these have been marked as deleted - hence n4 is
+        marked as deleted as well.  n5 isn't marked as deleted as it is still
+        needed as foundation for n3.
+        """
+        # Ensure that all members are part of this graph.
+        for m in members:
+            if m.graph != self:
+                raise NotMemberOfGraphError(m)
+
+        to_process = set(members)
+        all_deleted = None  # All nodes marked as deleted.
+        prev_deleted = self.deleted_nodes  # Previously marked as deleted.
+        while to_process:
+            # Mark all the members to process as deleted.  This doesn't use
+            # Graph.mark_members_deleted as it would needlessly check if the
+            # members are members of this Graph.
+            for member in to_process:
+                member.mark_deleted()
+
+            # Determine the nodes that have been marked as deleted in this
+            # round.  The number of nodes marked as deleted can differ from the
+            # number of nodes in the to_process set.
+            all_deleted = self.deleted_nodes
+            round_deleted = all_deleted - prev_deleted
+            prev_deleted = all_deleted
+
+            # Determine all outgoing nodes that are below the nodes that have
+            # been marked as deleted.  The read only set node._outgoing_nodes
+            # is used as the node.outgoing_nodes property can't be used on
+            # nodes that have been marked as deleted.
+            outgoing_nodes = set()
+            for node in round_deleted:
+                outgoing_nodes |= node._outgoing_nodes  # noqa  # pylint: disable=protected-access
+
+            # Determine new set of nodes to process which also need to be
+            # marked as deleted.  For this each outgoing node's incoming nodes
+            # will be checked and if the node was only needed by nodes that
+            # have been marked as deleted (processed) then it is obsolete and
+            # will be processed (marked as deleted) in the next round.
+            to_process = set()
+            while outgoing_nodes:
+                node = outgoing_nodes.pop()
+                if node._deleted:  # pylint: disable=protected-access
+                    continue  # Already processed. Continue with next node.
+                if node.in_cycle:
+                    # Node is part of a cycle.  Process the whole cycle as a
+                    # single member.
+                    cycle_nodes = node.cycle_nodes
+                    outgoing_nodes -= cycle_nodes
+                    incoming_nodes = node.incoming_cycle_nodes
+                    if incoming_nodes - all_deleted:
+                        # Cycle is still needed and hence not obsolete.
+                        continue
+
+                    # Cycle was only needed by nodes that have been already
+                    # marked as deleted and hence it is obsolete.
+                    to_process |= cycle_nodes
+
+                else:
+                    # Single node.
+                    if node._incoming_nodes - all_deleted:  # noqa  # pylint: disable=protected-access
+                        # Node is still needed and hence not obsolete.
+                        continue
+
+                    # Node was only needed by nodes that have been already
+                    # marked as deleted and hence it is obsolete.
+                    to_process |= set((node,))
 
     def unmark_deleted(self):
         """Unmarks all graph members as deleted."""
@@ -460,7 +570,10 @@ class Member(abc.ABC):
         The graph can only be set once.
         """
         if self._graph:
-            raise MemberAlreadyRegisteredError(self)
+            if self._graph == graph:
+                raise MemberAlreadyRegisteredError(self)
+            else:
+                raise NotMemberOfGraphError(self)
         self._graph = graph
 
     @property
@@ -576,9 +689,47 @@ class Node(Member):  # pylint: disable=abstract-method
 
         If this node isn't part of a cycle an empty set will be returned.
         """
-        inrs = self.incoming_nodes_recursive
+        # The cycle nodes are all the nodes that are in the incoming and
+        # outgoing nodes recursive sets (intersection).  Typically the incoming
+        # nodes recursive set hasn't been calculate yet and it is expensive
+        # to calculate it just to get the cycle nodes.  Instead of calculating
+        # it the incoming nodes are determined recursively for all the nodes
+        # that are also in the outgoing nodes recursive set.  This way all the
+        # nodes of the cycle are identified as the cycle nodes are part of both
+        # the incoming and outgoing nodes recursive sets.  This is typically a
+        # lot faster as the incoming nodes that are part of the cycle are a lot
+        # less than the full incoming nodes recursive set.
         onrs = self.outgoing_nodes_recursive
-        return frozenset(inrs & onrs)
+        to_visit = set((self,))
+        visited = set()
+        cycle_nodes = set()
+
+        while to_visit:
+            node = to_visit.pop()
+            visited |= set((node,))
+
+            # Only visit incoming nodes that are also in the outgoing nodes
+            # recursive set.
+            incoming_cycle_nodes = node.incoming_nodes & onrs
+            cycle_nodes |= incoming_cycle_nodes
+            to_visit |= incoming_cycle_nodes
+            to_visit -= visited
+
+        return frozenset(cycle_nodes)
+
+    @property
+    def incoming_cycle_nodes(self):
+        """Returns the incoming nodes of the cycle if the node is in a cycle.
+
+        If the node isn't in a cycle an empty set will be returned.  The
+        incoming cycle nodes set doesn't include the cycle nodes itself.
+        """
+        incoming_cycle_nodes = set()
+        cycle_nodes = self.cycle_nodes
+        for cycle_node in cycle_nodes:
+            incoming_cycle_nodes |= cycle_node.incoming_nodes
+        incoming_cycle_nodes -= cycle_nodes
+        return incoming_cycle_nodes
 
     @property
     def incoming_edges(self):
@@ -768,6 +919,20 @@ class Node(Member):  # pylint: disable=abstract-method
         properties will be used for the most important classes.
         """
         return True
+
+    @property
+    def outgoing_cycle_nodes(self):
+        """Returns the outgoing nodes of the cycle if the node is in a cycle.
+
+        If the node isn't in a cycle an empty set will be returned.  The
+        outgoing cycle nodes set doesn't include the cycle nodes itself.
+        """
+        outgoing_cycle_nodes = set()
+        cycle_nodes = self.cycle_nodes
+        for cycle_node in cycle_nodes:
+            outgoing_cycle_nodes |= cycle_node.outgoing_nodes
+        outgoing_cycle_nodes -= cycle_nodes
+        return outgoing_cycle_nodes
 
     @property
     def outgoing_edges(self):

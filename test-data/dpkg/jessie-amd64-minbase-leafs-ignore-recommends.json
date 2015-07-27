@@ -1,0 +1,90 @@
+{
+    "[apt]": [
+        "apt",
+        "debian-archive-keyring",
+        "gnupg",
+        "gpgv",
+        "libapt-pkg4.12",
+        "libreadline6",
+        "libstdc++6",
+        "libusb-0.1-4",
+        "readline-common"
+    ],
+    "[base-passwd]": [
+        "base-passwd",
+        "libdebconfclient0"
+    ],
+    "[bash]": [
+        "base-files",
+        "bash",
+        "dash",
+        "mawk"
+    ],
+    "[bsdutils]": [
+        "bsdutils"
+    ],
+    "[debconf-i18n]": [
+        "debconf-i18n",
+        "liblocale-gettext-perl",
+        "libtext-charwidth-perl",
+        "libtext-iconv-perl",
+        "libtext-wrapi18n-perl"
+    ],
+    "[diffutils]": [
+        "diffutils"
+    ],
+    "[e2fsprogs]": [
+        "e2fslibs",
+        "e2fsprogs",
+        "libcomerr2",
+        "libss2"
+    ],
+    "[findutils]": [
+        "findutils"
+    ],
+    "[gcc-4.8-base]": [
+        "gcc-4.8-base"
+    ],
+    "[grep]": [
+        "grep"
+    ],
+    "[gzip]": [
+        "gzip"
+    ],
+    "[hostname]": [
+        "hostname"
+    ],
+    "[init]": [
+        "acl",
+        "adduser",
+        "dmsetup",
+        "init",
+        "libcap2-bin",
+        "libcryptsetup4",
+        "libdevmapper1.02.1",
+        "libkmod2",
+        "libncursesw5",
+        "libprocps3",
+        "libudev1",
+        "procps",
+        "systemd",
+        "systemd-sysv",
+        "udev"
+    ],
+    "[libc-bin]": [
+        "libc-bin"
+    ],
+    "[login]": [
+        "libpam-runtime",
+        "login"
+    ],
+    "[ncurses-base]": [
+        "ncurses-base"
+    ],
+    "[ncurses-bin]": [
+        "ncurses-bin"
+    ],
+    "[sed]": [
+        "sed"
+    ]
+}

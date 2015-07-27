@@ -345,7 +345,7 @@ class InstalledDependencyNode(purgatory.graph.Node):
 
     def _init_str(self):
         """Initializes self._str for self.__str__."""
-        self._str = self.__dep_rawstr
+        self._str = "%s: %s" % (self.__dep.rawtype, self.__dep_rawstr)
 
     @property
     def dependency(self):

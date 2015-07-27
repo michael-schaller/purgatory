@@ -73,3 +73,24 @@ class TestSystemDpkgGraph(tests.common.PurgatoryTestCase):
             layer = graph.leaf_nodes_flat
             for node in layer:
                 node.mark_deleted()
+
+    @unittest.skip
+    @tests.common.cprofile
+    def test_profile_mark_members_including_obsolete_deleted(self):
+        graph = self.graph
+
+        # Get leafs and sort them.
+        leafs = graph.leaf_nodes
+        leafs = list(leafs)
+        for index in range(len(leafs)):
+            leafs[index] = list(leafs[index])
+            leafs[index].sort()
+        leafs.sort()
+
+        # For each leaf calculate the nodes that would be marked removed if
+        # the leaf would be removed including the obsolete nodes.  This is the
+        # typical workload in case Purgatory shows the leaf nodes and details.
+        for leaf in leafs:
+            graph.mark_members_including_obsolete_deleted(leaf)
+            graph.deleted_nodes  # To gather details about the deleted nodes.  # noqa  # pylint: disable=pointless-statement
+            graph.unmark_deleted()  # Reset graph.
