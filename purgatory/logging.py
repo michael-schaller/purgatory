@@ -10,7 +10,9 @@ class ModFuncFilter(logging.Filter):
     """Logging filter to combine module and funcName as modfunc.
 
     This allows to have <module>.<func.-name> or <module>.<class>.<method-name>
-    with a fixed width.
+    with a fixed width.  If the module starts with 'purgatory.' or 'tests.'
+    then the prefix will be stripped.
+
     Example: %(modfunc)-50s
     """
     def filter(self, record):
@@ -24,6 +26,13 @@ class ModFuncFilter(logging.Filter):
             caller_module_name = caller_module.__name__
             if caller_module_name != "logging":
                 break  # Found the caller.
+
+        # If the module name starts with 'purgatory.' or 'tests.' then strip
+        # it.  Note: len("purgatory.") == 10; len("tests.") == 6
+        if caller_module_name.startswith("purgatory."):
+            caller_module_name = caller_module_name[10:]
+        if caller_module_name.startswith("tests."):
+            caller_module_name = caller_module_name[6:]
 
         # Get all the needed information from the caller traceback.
         caller_traceback = inspect.getframeinfo(caller_frame)

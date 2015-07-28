@@ -853,10 +853,26 @@ class TestGraph(tests.common.PurgatoryTestCase):
         self.assertSetEqual(n2.outgoing_nodes, set((n3,)))
         self.assertSetEqual(n2.outgoing_nodes_recursive, set((n3, n4, n5)))
 
+        self.assertSetEqual(n3.outgoing_nodes, set((n4, n5)))
+        self.assertSetEqual(n3.outgoing_nodes_recursive, set((n4, n5)))
+
+        self.assertSetEqual(n1.outgoing_nodes, set((n3,)))
+        self.assertSetEqual(n1.outgoing_nodes_recursive, set((n3, n4, n5)))
+
+        self.assertSetEqual(n2.outgoing_nodes, set((n3,)))
+        self.assertSetEqual(n2.outgoing_nodes_recursive, set((n3, n4, n5)))
+
         e3.mark_deleted()
         self.assertTrue(abs(e4.probability - 1.0) < purgatory.graph.EPSILON)
+
+        self.assertSetEqual(n3.outgoing_nodes, set((n5,)))
+        self.assertSetEqual(n3.outgoing_nodes_recursive, set((n5,)))
+
         self.assertSetEqual(n1.outgoing_nodes, set((n3,)))
         self.assertSetEqual(n1.outgoing_nodes_recursive, set((n3, n5)))
+
+        self.assertSetEqual(n2.outgoing_nodes, set((n3,)))
+        self.assertSetEqual(n2.outgoing_nodes_recursive, set((n3, n5)))
 
         # Test everything again after resetting the graph to make sure that
         # cache update/invalidation works properly.
@@ -876,8 +892,15 @@ class TestGraph(tests.common.PurgatoryTestCase):
 
         e3.mark_deleted()
         self.assertTrue(abs(e4.probability - 1.0) < purgatory.graph.EPSILON)
+
+        self.assertSetEqual(n3.outgoing_nodes, set((n5,)))
+        self.assertSetEqual(n3.outgoing_nodes_recursive, set((n5,)))
+
         self.assertSetEqual(n1.outgoing_nodes, set((n3,)))
         self.assertSetEqual(n1.outgoing_nodes_recursive, set((n3, n5)))
+
+        self.assertSetEqual(n2.outgoing_nodes, set((n3,)))
+        self.assertSetEqual(n2.outgoing_nodes_recursive, set((n3, n5)))
 
         # The graph consists of 3 layers.
         g.unmark_deleted()

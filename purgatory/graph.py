@@ -594,6 +594,7 @@ class Node(Member):  # pylint: disable=abstract-method
         self._incoming_edges = set()
         self._incoming_nodes = set()
         self._outgoing_edges = set()
+        self._outgoing_or_edges = None  # True or False after initialization.
         self._outgoing_nodes = set()
 
         # Protected caches
@@ -608,6 +609,7 @@ class Node(Member):  # pylint: disable=abstract-method
         self._outgoing_nodes_without_deleted = None
         self._outgoing_without_deleted_touched_at_cl = 0
         self._outgoing_nodes_recursive_cache = None
+        self._outgoing_nodes_recursive_static = False
         self._outgoing_nodes_recursive_cache_level = 0
         self._outgoing_nodes_recursive_built_at_cl = 0
         self._outgoing_nodes_recursive_invalidated_at_cl = 0
@@ -647,15 +649,25 @@ class Node(Member):  # pylint: disable=abstract-method
 
         # Add edge while ensuring that all outgoing edges are either of type
         # Edge or of type OrEdge.
-        if self._outgoing_edges:
-            for sample_edge in self._outgoing_edges:
-                break  # Just need one edge of the set
-            if sample_edge.is_oredge_instance:  # noqa  # pylint: disable=undefined-loop-variable
+        if self._outgoing_or_edges is None:
+            # No edges in the outgoing edges set, yet.  Determine the edge type
+            # and set the self._outgoing_or_edges variable for future rounds to
+            # know which edge type is accepted.
+            if edge.is_oredge_instance:
+                self._outgoing_or_edges = True
+            else:
+                self._outgoing_or_edges = False
+        else:
+            if self._outgoing_or_edges:
+                # Edges in the outgoing edges set are of type OrEdge.
                 if not edge.is_oredge_instance:
                     raise NotAnOrEdgeError(edge)
             else:
+                # Edges in the outgoing edges set are of type Edge.
                 if edge.is_oredge_instance:
                     raise NotAnEdgeError(edge)
+
+        # Update the outgoing edges and nodes sets.
         self._outgoing_edges.add(edge)
         self._outgoing_nodes.add(edge.to_node)
 
@@ -679,6 +691,8 @@ class Node(Member):  # pylint: disable=abstract-method
         """
         self._outgoing_edges = frozenset(self._outgoing_edges)
         self._outgoing_edges_without_deleted = set(self._outgoing_edges)
+        if self._outgoing_or_edges is None:
+            self._outgoing_or_edges = False  # Empty defaults to type Edge.
 
         self._outgoing_nodes = frozenset(self._outgoing_nodes)
         self._outgoing_nodes_without_deleted = set(self._outgoing_nodes)
@@ -974,6 +988,11 @@ class Node(Member):  # pylint: disable=abstract-method
         if onrc is None:
             return None  # No cached result.
 
+        if self._outgoing_nodes_recursive_static:
+            # The outgoing nodes recursive set is static and hence can be
+            # reused indefinitely.
+            return onrc
+
         local_cl = self._outgoing_nodes_recursive_cache_level
         if local_cl == graph_cl:
             return onrc  # Cached result is still valid.
@@ -981,12 +1000,20 @@ class Node(Member):  # pylint: disable=abstract-method
         # Local and graph cache level differ.  Check if the cached result is
         # still valid by checking if the cached result of this and each node
         # that contributed to this cached result is still valid.
+        self_built_at = self._outgoing_nodes_recursive_built_at_cl
         to_check = onrc | set((self,))
         for node in to_check:
+            if node._outgoing_nodes_recursive_static:  # noqa  # pylint: disable=protected-access
+                continue
             built_at = node._outgoing_nodes_recursive_built_at_cl  # noqa  # pylint: disable=protected-access
             invalidated_at = node._outgoing_nodes_recursive_invalidated_at_cl  # noqa  # pylint: disable=protected-access
             if invalidated_at > built_at:
-                return None  # Cached result is no longer valid!
+                # Cached result is no longer valid because one part is no
+                # longer valid!
+                return None
+            if built_at > self_built_at:
+                # Cached result is no longer valid because one part is newer!
+                return None
 
         # Cached result is still valid.  Update the local cache level to avoid
         # needless reiteration of this check and then return the cached result.
@@ -1005,11 +1032,18 @@ class Node(Member):  # pylint: disable=abstract-method
         to_visit = set((self,))
         visited = set()
         outgoing_nodes_recursive = set()
+        outgoing_nodes_recursive_static = True
         while to_visit:
             node = to_visit.pop()
             if node in visited:  # pragma: no cover
                 continue  # Node has been already visited.
             visited |= set((node,))  # Faster than visited.add(node).
+
+            # Check the type of the outgoing edges and in case of OrEdges the
+            # outgoing nodes recursive set is no longer static and can't be
+            # reused all the time.
+            if node._outgoing_or_edges:  # noqa  # pylint: disable=protected-access
+                outgoing_nodes_recursive_static = False
 
             # Add all outgoing nodes to the result and then handle the outgoing
             # nodes one by one.
@@ -1024,9 +1058,15 @@ class Node(Member):  # pylint: disable=abstract-method
                 onrc = cn._outgoing_nodes_recursive_get_cache(  # noqa  # pylint: disable=protected-access
                     graph_cl=graph_cl)
                 if onrc is not None:
-                    # The child node has a valid cache.  Add all child nodes to
-                    # the result, update visited and to visit nodes and then
-                    # continue with the next child node.
+                    # The child node has a valid cache.  Check if the cached
+                    # result is static and if it isn't this result isn't static
+                    # either.
+                    if not cn._outgoing_nodes_recursive_static:  # noqa  # pylint: disable=protected-access
+                        outgoing_nodes_recursive_static = False
+
+                    # Add the cached result of the child node to the result,
+                    # update visited and to visit nodes and then continue with
+                    # the next child node.
                     outgoing_nodes_recursive |= onrc
                     visited |= onrc
                     to_visit -= onrc
@@ -1039,6 +1079,7 @@ class Node(Member):  # pylint: disable=abstract-method
         # Cache the result.
         outgoing_nodes_recursive = frozenset(outgoing_nodes_recursive)
         self._outgoing_nodes_recursive_cache = outgoing_nodes_recursive
+        self._outgoing_nodes_recursive_static = outgoing_nodes_recursive_static
         self._outgoing_nodes_recursive_cache_level = graph_cl
         self._outgoing_nodes_recursive_built_at_cl = graph_cl
 
