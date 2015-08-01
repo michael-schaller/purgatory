@@ -30,6 +30,7 @@ def cprofile(test):
         #stats.print_callees(
         #    ".*/dpkg_graph.py.*__init_nodes_and_edges_phase1.*")
         #stats.print_callees(".*/dpkg_graph.py.*__init__.*")
+        stats.print_callers(".*/graph.py.*_outgoing_nodes_recursive_get_cache.*")
         self.fail("fail to see profiler stats")
 
     return cprofile_wrapper

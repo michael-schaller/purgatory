@@ -262,8 +262,7 @@ class Graph(abc.ABC):
         while stage2_nodes_to_visit:
             node = stage2_nodes_to_visit.pop()
 
-            # Test the shortcut if the outgoing_edges set is empty
-
+            onrs = node.outgoing_nodes_recursive
             if node.in_cycle:
                 # Node is in a cycle.  Add this node to the
                 # stage3_nodes_to_visit set to look at it in stage 3.
@@ -272,7 +271,6 @@ class Graph(abc.ABC):
 
                 # Don't visit any further nodes of this cycle or nodes below
                 # this cycle in stage 2.
-                onrs = node.outgoing_nodes_recursive
                 stage2_nodes_to_visit -= onrs
 
                 # Remove all nodes below this cycle as these can't be leaf
@@ -283,7 +281,6 @@ class Graph(abc.ABC):
                 # Node isn't in a cycle and isn't a leaf node.  This node and
                 # all nodes below it can't be leaf nodes/cycles and hence don't
                 # need to be visited in stage 2 or 3.
-                onrs = node.outgoing_nodes_recursive
                 stage2_nodes_to_visit -= onrs
                 stage3_nodes_to_visit -= onrs
 
@@ -906,10 +903,13 @@ class Node(Member):  # pylint: disable=abstract-method
     def in_cycle(self):
         """Returns True if this Node is part of a cycle."""
         # Simple checks if this node can be part of a cycle.
-        if not self.incoming_edges:
+        incoming_nodes = self.incoming_nodes
+        if not incoming_nodes:
             return False
-        if not self.outgoing_edges:
-            return False
+        if self.outgoing_nodes & incoming_nodes:
+            # There is at least one node in the incoming and outgoing nodes
+            # sets and hence this node is in a cycle with this/these node(s).
+            return True
 
         # Result-wise it doesn't matter if the tests uses the recursive
         # incoming nodes set or the recursive outgoing nodes set - the result
@@ -919,8 +919,8 @@ class Node(Member):  # pylint: disable=abstract-method
         # 1) Graphs that model a hierarchy typically have a lot more nodes on
         #    top than the bottom and hence the recursive outgoing nodes set is
         #    often cheaper to calculate.
-        # 2) The caches for the outgoing sets are less often invalidated than
-        #    the caches for the incomings sets.
+        # 2) The caches for the outgoing sets are far less often invalidated
+        #    than the caches for the incomings sets.
         if self in self.outgoing_nodes_recursive:
             return True
         return False
@@ -1049,31 +1049,29 @@ class Node(Member):  # pylint: disable=abstract-method
             # nodes one by one.
             outgoing_nodes = node.outgoing_nodes
             outgoing_nodes_recursive |= outgoing_nodes
-            for cn in outgoing_nodes:
-                if cn in visited:
-                    continue  # Child node has been already visited.
-
-                # Determine if the child node has a valid cache and if this is
-                # the case use it.
+            to_check = outgoing_nodes - visited
+            for cn in to_check:
+                # Determine if the node has a valid cache and if this is the
+                # case use it.
                 onrc = cn._outgoing_nodes_recursive_get_cache(  # noqa  # pylint: disable=protected-access
                     graph_cl=graph_cl)
                 if onrc is not None:
-                    # The child node has a valid cache.  Check if the cached
-                    # result is static and if it isn't this result isn't static
+                    # The node has a valid cache.  Check if the cached result
+                    # is static and if it isn't this result isn't static
                     # either.
                     if not cn._outgoing_nodes_recursive_static:  # noqa  # pylint: disable=protected-access
                         outgoing_nodes_recursive_static = False
 
-                    # Add the cached result of the child node to the result,
-                    # update visited and to visit nodes and then continue with
-                    # the next child node.
+                    # Add the cached result of the node to the result, update
+                    # visited and to visit nodes and then continue with the
+                    # next child node.
                     outgoing_nodes_recursive |= onrc
                     visited |= onrc
                     to_visit -= onrc
                     continue
 
-                # Child node doesn't have a valid cache.  Record that it still
-                # needs to be visited.
+                # Node doesn't have a valid cache.  Record that it still needs
+                # to be visited.
                 to_visit |= set((cn,))  # Faster than to_visit.add(cn).
 
         # Cache the result.
