@@ -134,8 +134,8 @@ class CommonDpkgGraphTestsMixin(object):
     def test_leaf_nodes(self):
         # Determines all layers of the graph by the help of the
         # Graph.leaf_nodes_flat property and Node.mark_deleted() method.
-        # This test ensures that the all graphs can be dissected into layer
-        # by this method.  If this isn't the case within the layer_index limit
+        # This test ensures that all graphs can be dissected into layers by
+        # this method.  If this isn't the case within the layer_index limit
         # then something is wrong with the Graph.leaf_nodes property.
         graph = self.graph
         layer = None
@@ -148,3 +148,35 @@ class CommonDpkgGraphTestsMixin(object):
             layer = graph.leaf_nodes_flat
             for node in layer:
                 node.mark_deleted()
+
+    def test_outgoing_nodes_recursive_get_cache(self):
+        graph = self.graph
+        dynamic = purgatory.graph.Node.dynamic_cached_result
+        default = purgatory.graph.Node.default_cached_result
+        static = purgatory.graph.Node.static_cached_result
+        graph_cl = graph._mark_deleted_outgoing_cache_level
+
+        # By default no node has a cache and the cache type is always dynamic.
+        for node in graph.nodes.values():
+            cr, ct = node._outgoing_nodes_recursive_get_cache(
+                graph_cl=graph_cl)
+            self.assertEquals(cr, None)
+            self.assertEquals(ct, dynamic)
+
+        # Generate outgoing nodes recursive caches for all nodes and check
+        # the cache type.
+        for node in graph.nodes.values():
+            node.outgoing_nodes_recursive
+            cr, ct = node._outgoing_nodes_recursive_get_cache(
+                graph_cl=graph_cl)
+
+            # The cache type must be for all nodes either default or static.
+            self.assertNotEquals(ct, dynamic)
+
+            # If the cache type is static then all nodes of the cache result
+            # must be also of type static.
+            if ct == static:
+                for cr_node in cr:
+                    _, ct2 = cr_node._outgoing_nodes_recursive_get_cache(
+                        graph_cl=graph_cl)
+                    self.assertEquals(ct2, static)

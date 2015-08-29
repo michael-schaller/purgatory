@@ -420,7 +420,7 @@ class TargetEdge(purgatory.graph.OrEdge):
         """Initializes self._str for self.__str__."""
         pass  # TargetEdge implements its own __str__ method
 
-    def __str__(self):
+    def __str__(self):  # pragma: no cover
         probability = self.probability
         if abs(probability - 1.0) < purgatory.graph.EPSILON:
             return "%s --> %s" % (

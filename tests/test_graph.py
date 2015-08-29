@@ -7,6 +7,8 @@
 # pylint: disable=protected-access
 
 
+import random
+
 import purgatory.graph
 import purgatory.logging
 
@@ -863,6 +865,10 @@ class TestGraph(tests.common.PurgatoryTestCase):
         self.assertSetEqual(n2.outgoing_nodes_recursive, set((n3, n4, n5)))
 
         e3.mark_deleted()
+        # n1 --e1--\
+        #           --> n3
+        # n2 --e2--/       \--e4(p=1.0)--> n5
+
         self.assertTrue(abs(e4.probability - 1.0) < purgatory.graph.EPSILON)
 
         self.assertSetEqual(n3.outgoing_nodes, set((n5,)))
@@ -913,6 +919,322 @@ class TestGraph(tests.common.PurgatoryTestCase):
         n4.mark_deleted()
         n5.mark_deleted()
         self.assertSetEqual(g.leaf_nodes_flat, set())  # Nothing left
+
+    def test_outgoing_nodes_recursive_get_cache(self):
+        #              /--e2(p=0.33)--> n3 --e5-->\
+        # n1 --e1--> n2 --e3(p=0.33)--> n4 --e6--> n6
+        #              \--e4(p=0.33)--> n5 --e7-->/
+        #
+        # n7 --e8(p=0.5)--> n8
+        #   \--e9(p=0.5)--> n9
+        n1 = Node(uid="n1")
+        n2 = Node(uid="n2")
+        n3 = Node(uid="n3")
+        n4 = Node(uid="n4")
+        n5 = Node(uid="n5")
+        n6 = Node(uid="n6")
+        n7 = Node(uid="n7")
+        n8 = Node(uid="n8")
+        n9 = Node(uid="n9")
+
+        e1 = Edge(n1, n2)
+        e2 = OrEdge(n2, n3)
+        e3 = OrEdge(n2, n4)
+        e4 = OrEdge(n2, n5)
+        e5 = Edge(n3, n6)
+        e6 = Edge(n4, n6)
+        e7 = Edge(n5, n6)
+        e8 = OrEdge(n7, n8)
+        e9 = OrEdge(n7, n9)
+
+        def init_nodes_and_edges(graph):
+            graph._add_node(n1)
+            graph._add_node(n2)
+            graph._add_node(n3)
+            graph._add_node(n4)
+            graph._add_node(n5)
+            graph._add_node(n6)
+            graph._add_node(n7)
+            graph._add_node(n8)
+            graph._add_node(n9)
+
+            graph._add_edge(e1)
+            graph._add_edge(e2)
+            graph._add_edge(e3)
+            graph._add_edge(e4)
+            graph._add_edge(e5)
+            graph._add_edge(e6)
+            graph._add_edge(e7)
+            graph._add_edge(e8)
+            graph._add_edge(e9)
+
+        g = Graph(init_nodes_and_edges)
+
+        dynamic = purgatory.graph.Node.dynamic_cached_result
+        default = purgatory.graph.Node.default_cached_result
+        static = purgatory.graph.Node.static_cached_result
+
+        def validate_cache(node, exptected_cache_result, exptected_cache_type):
+            graph_cl = g._mark_deleted_outgoing_cache_level
+            cr, ct = node._outgoing_nodes_recursive_get_cache(
+                graph_cl=graph_cl)
+            if cr is None or exptected_cache_result is None:
+                self.assertEquals(cr, exptected_cache_result)
+            else:
+                self.assertSetEqual(cr, exptected_cache_result)
+            self.assertEquals(ct, exptected_cache_type)
+
+        #              /--e2(p=0.33)--> n3 --e5-->\
+        # n1 --e1--> n2 --e3(p=0.33)--> n4 --e6--> n6
+        #              \--e4(p=0.33)--> n5 --e7-->/
+        #
+        # n7 --e8(p=0.5)--> n8
+        #   \--e9(p=0.5)--> n9
+
+        # Check that there are no cached results, yet.
+        for node in [n1, n2, n3, n4, n5, n6]:
+            validate_cache(node, None, dynamic)
+
+        # Get outgoing nodes recursive for n1 and ensure that all nodes have
+        # the expected default or static caches.
+        self.assertSetEqual(
+            n1.outgoing_nodes_recursive, set((n2, n3, n4, n5, n6)))
+        validate_cache(n6, set(), static)
+        validate_cache(n5, set((n6,)), static)
+        validate_cache(n4, set((n6,)), static)
+        validate_cache(n3, set((n6,)), static)
+        validate_cache(n2, set((n3, n4, n5, n6)), default)
+        validate_cache(n1, set((n2, n3, n4, n5, n6)), default)
+
+        # Make n3 as deleted and ensure that n1 and n2 have now dynamic caches.
+        n3.mark_deleted()
+        #
+        # n1 --e1--> n2 --e3(p=0.5)--> n4 --e6--> n6
+        #              \--e4(p=0.5)--> n5 --e7-->/
+        #
+        # n7 --e8(p=0.5)--> n8
+        #   \--e9(p=0.5)--> n9
+        self.assertSetEqual(
+            n1.outgoing_nodes_recursive, set((n2, n4, n5, n6)))
+        validate_cache(n6, set(), static)
+        validate_cache(n5, set((n6,)), static)
+        validate_cache(n4, set((n6,)), static)
+        validate_cache(n2, set((n4, n5, n6)), dynamic)
+        validate_cache(n1, set((n2, n4, n5, n6)), dynamic)
+
+        # Reset the graph and make sure that the default caches are in use.
+        g.unmark_deleted()
+        #              /--e2(p=0.33)--> n3 --e5-->\
+        # n1 --e1--> n2 --e3(p=0.33)--> n4 --e6--> n6
+        #              \--e4(p=0.33)--> n5 --e7-->/
+        #
+        # n7 --e8(p=0.5)--> n8
+        #   \--e9(p=0.5)--> n9
+        validate_cache(n6, set(), static)
+        validate_cache(n5, set((n6,)), static)
+        validate_cache(n4, set((n6,)), static)
+        validate_cache(n3, set((n6,)), static)
+        validate_cache(n2, set((n3, n4, n5, n6)), default)
+        validate_cache(n1, set((n2, n3, n4, n5, n6)), default)
+
+        # Make n3 and n4 as deleted and ensure the proper caches.
+        n3.mark_deleted()
+        n4.mark_deleted()
+        #
+        # n1 --e1--> n2                           n6
+        #              \--e4(p=1.0)--> n5 --e7-->/
+        #
+        # n7 --e8(p=0.5)--> n8
+        #   \--e9(p=0.5)--> n9
+        self.assertSetEqual(
+            n1.outgoing_nodes_recursive, set((n2, n5, n6)))
+        validate_cache(n6, set(), static)
+        validate_cache(n5, set((n6,)), static)
+        validate_cache(n2, set((n5, n6)), dynamic)
+        validate_cache(n1, set((n2, n5, n6)), dynamic)
+
+        # Reset the graph, mark only n3 as deleted and the dynamic
+        # caches from the previous round will be invalid and after the
+        # outgoing nodes recursive have been redetermined the caches are
+        # back.
+        g.unmark_deleted()
+        n3.mark_deleted()
+        #
+        # n1 --e1--> n2 --e3(p=0.5)--> n4 --e6--> n6
+        #              \--e4(p=0.5)--> n5 --e7-->/
+        #
+        # n7 --e8(p=0.5)--> n8
+        #   \--e9(p=0.5)--> n9
+        validate_cache(n6, set(), static)
+        validate_cache(n5, set((n6,)), static)
+        validate_cache(n4, set((n6,)), static)
+        validate_cache(n2, None, dynamic)
+        validate_cache(n1, None, dynamic)
+        self.assertSetEqual(
+            n1.outgoing_nodes_recursive, set((n2, n4, n5, n6)))
+        validate_cache(n6, set(), static)
+        validate_cache(n5, set((n6,)), static)
+        validate_cache(n4, set((n6,)), static)
+        validate_cache(n2, set((n4, n5, n6)), dynamic)
+        validate_cache(n1, set((n2, n4, n5, n6)), dynamic)
+
+        # Reset the graph and make sure that the default caches are in use.
+        g.unmark_deleted()
+        #              /--e2(p=0.33)--> n3 --e5-->\
+        # n1 --e1--> n2 --e3(p=0.33)--> n4 --e6--> n6
+        #              \--e4(p=0.33)--> n5 --e7-->/
+        #
+        # n7 --e8(p=0.5)--> n8
+        #   \--e9(p=0.5)--> n9
+        validate_cache(n6, set(), static)
+        validate_cache(n5, set((n6,)), static)
+        validate_cache(n4, set((n6,)), static)
+        validate_cache(n3, set((n6,)), static)
+        validate_cache(n2, set((n3, n4, n5, n6)), default)
+        validate_cache(n1, set((n2, n3, n4, n5, n6)), default)
+
+        # Make n3 and n4 as deleted and ensure the proper caches.
+        n3.mark_deleted()
+        n4.mark_deleted()
+        #
+        # n1 --e1--> n2                           n6
+        #              \--e4(p=1.0)--> n5 --e7-->/
+        #
+        # n7 --e8(p=0.5)--> n8
+        #   \--e9(p=0.5)--> n9
+        validate_cache(n6, set(), static)
+        validate_cache(n5, set((n6,)), static)
+        validate_cache(n2, None, dynamic)
+        validate_cache(n1, None, dynamic)
+        # Only regenerate caches of nodes n2 and below.
+        self.assertSetEqual(
+            n2.outgoing_nodes_recursive, set((n5, n6)))
+        validate_cache(n6, set(), static)
+        validate_cache(n5, set((n6,)), static)
+        validate_cache(n2, set((n5, n6)), dynamic)
+        validate_cache(n1, None, dynamic)
+        # Regenerate all caches (n1 and below).
+        self.assertSetEqual(
+            n1.outgoing_nodes_recursive, set((n2, n5, n6)))
+        validate_cache(n6, set(), static)
+        validate_cache(n5, set((n6,)), static)
+        validate_cache(n2, set((n5, n6)), dynamic)
+        validate_cache(n1, set((n2, n5, n6)), dynamic)
+
+        # Mark n8 as deleted, this will raise the outgoing graph cache level
+        # as e8 will also be marked deleted and the probability of e9 changes
+        # and the dynamic cached need to be revalidated which will succeed.
+        n7.mark_deleted()
+        #
+        # n1 --e1--> n2                           n6
+        #              \--e4(p=1.0)--> n5 --e7-->/
+        #
+        # n7
+        #   \--e9(p=1.0)--> n9
+        validate_cache(n6, set(), static)
+        validate_cache(n5, set((n6,)), static)
+        validate_cache(n2, set((n5, n6)), dynamic)
+        validate_cache(n1, set((n2, n5, n6)), dynamic)
+
+        # Reset graph, regenerate and check caches to get back o a defined
+        # state.
+        g.unmark_deleted()
+        #              /--e2(p=0.33)--> n3 --e5-->\
+        # n1 --e1--> n2 --e3(p=0.33)--> n4 --e6--> n6
+        #              \--e4(p=0.33)--> n5 --e7-->/
+        #
+        # n7 --e8(p=0.5)--> n8
+        #   \--e9(p=0.5)--> n9
+        self.assertSetEqual(
+            n7.outgoing_nodes_recursive, set((n8, n9)))
+        validate_cache(n7, set((n8, n9)), default)
+
+        # Mark e8 as deleted
+        e8.mark_deleted()
+        validate_cache(n7, None, dynamic)
+
+        # Reset the graph and make sure that the default caches are in use.
+        g.unmark_deleted()
+        #              /--e2(p=0.33)--> n3 --e5-->\
+        # n1 --e1--> n2 --e3(p=0.33)--> n4 --e6--> n6
+        #              \--e4(p=0.33)--> n5 --e7-->/
+        #
+        # n7 --e8(p=0.5)--> n8
+        #   \--e9(p=0.5)--> n9
+        self.assertSetEqual(
+            n1.outgoing_nodes_recursive, set((n2, n3, n4, n5, n6)))
+        validate_cache(n6, set(), static)
+        validate_cache(n5, set((n6,)), static)
+        validate_cache(n4, set((n6,)), static)
+        validate_cache(n3, set((n6,)), static)
+        validate_cache(n2, set((n3, n4, n5, n6)), default)
+        validate_cache(n1, set((n2, n3, n4, n5, n6)), default)
+
+        # Mark e2 as deleted and ensure the proper caches.
+        e2.mark_deleted()
+        #                              n3 --e5-->\
+        # n1 --e1--> n2 --e3(p=0.5)--> n4 --e6--> n6
+        #              \--e4(p=0.5)--> n5 --e7-->/
+        #
+        # n7 --e8(p=0.5)--> n8
+        #   \--e9(p=0.5)--> n9
+        validate_cache(n6, set(), static)
+        validate_cache(n5, set((n6,)), static)
+        validate_cache(n4, set((n6,)), static)
+        validate_cache(n3, set((n6,)), static)
+        validate_cache(n2, None, dynamic)
+        validate_cache(n1, None, dynamic)
+        # Only regenerate caches of nodes n2 and below.
+        self.assertSetEqual(
+            n2.outgoing_nodes_recursive, set((n4, n5, n6)))
+        validate_cache(n6, set(), static)
+        validate_cache(n5, set((n6,)), static)
+        validate_cache(n4, set((n6,)), static)
+        validate_cache(n3, set((n6,)), static)
+        validate_cache(n2, set((n4, n5, n6)), dynamic)
+        validate_cache(n1, None, dynamic)
+        # Regenerate all caches (n1 and below).
+        self.assertSetEqual(
+            n1.outgoing_nodes_recursive, set((n2, n4, n5, n6)))
+        validate_cache(n6, set(), static)
+        validate_cache(n5, set((n6,)), static)
+        validate_cache(n4, set((n6,)), static)
+        validate_cache(n3, set((n6,)), static)
+        validate_cache(n2, set((n4, n5, n6)), dynamic)
+        validate_cache(n1, set((n2, n4, n5, n6)), dynamic)
+
+        # Mark e3 as deleted and ensure the proper caches.
+        e3.mark_deleted()
+        #                              n3 --e5-->\
+        # n1 --e1--> n2                n4 --e6--> n6
+        #              \--e4(p=1.0)--> n5 --e7-->/
+        #
+        # n7 --e8(p=0.5)--> n8
+        #   \--e9(p=0.5)--> n9
+        validate_cache(n6, set(), static)
+        validate_cache(n5, set((n6,)), static)
+        validate_cache(n4, set((n6,)), static)
+        validate_cache(n3, set((n6,)), static)
+        validate_cache(n2, None, dynamic)
+        validate_cache(n1, None, dynamic)
+        # Only regenerate caches of nodes n2 and below.
+        self.assertSetEqual(
+            n2.outgoing_nodes_recursive, set((n5, n6)))
+        validate_cache(n6, set(), static)
+        validate_cache(n5, set((n6,)), static)
+        validate_cache(n4, set((n6,)), static)
+        validate_cache(n3, set((n6,)), static)
+        validate_cache(n2, set((n5, n6)), dynamic)
+        validate_cache(n1, None, dynamic)
+        # Regenerate all caches (n1 and below).
+        self.assertSetEqual(
+            n1.outgoing_nodes_recursive, set((n2, n5, n6)))
+        validate_cache(n6, set(), static)
+        validate_cache(n5, set((n6,)), static)
+        validate_cache(n4, set((n6,)), static)
+        validate_cache(n3, set((n6,)), static)
+        validate_cache(n2, set((n5, n6)), dynamic)
+        validate_cache(n1, set((n2, n5, n6)), dynamic)
 
     def test_node_incoming_outgoing_nodes_recursive(self):
         #    /--e1(p=0.5)--> n2 --e3-->\
@@ -1390,6 +1712,56 @@ class TestGraph(tests.common.PurgatoryTestCase):
         self.assertTrue(e4.deleted)
 
     def test_graph_mark_members_including_obsolete_deleted(self):
+        # n1 --e1-->\
+        # n2 --e2--> n3 --e3--\
+        #              \<-----/
+        n1 = Node(uid="n1")
+        n2 = Node(uid="n2")
+        n3 = Node(uid="n3")
+
+        e1 = Edge(n1, n3)
+        e2 = Edge(n2, n3)
+        e3 = Edge(n3, n3)
+
+        def init_nodes_and_edges(graph):
+            graph._add_node(n1)
+            graph._add_node(n2)
+            graph._add_node(n3)
+
+            graph._add_edge(e1)
+            graph._add_edge(e2)
+            graph._add_edge(e3)
+
+        g = Graph(init_nodes_and_edges)
+
+        self.assertFalse(n1.in_cycle)
+        self.assertFalse(n2.in_cycle)
+        self.assertTrue(n3.in_cycle)
+
+        self.assertSetEqual(n1.cycle_nodes, set())
+        self.assertSetEqual(n2.cycle_nodes, set())
+        self.assertSetEqual(n3.cycle_nodes, set((n3,)))
+
+        g.mark_members_including_obsolete_deleted(set((n1,)))
+        self.assertSetEqual(g.deleted_nodes, set((n1,)))
+
+        g.mark_members_including_obsolete_deleted(set((n2,)))
+        self.assertSetEqual(g.deleted_nodes, set((n1, n2, n3)))
+
+        g.unmark_deleted()
+
+        g.mark_members_including_obsolete_deleted(set((n2,)))
+        self.assertSetEqual(g.deleted_nodes, set((n2,)))
+
+        g.mark_members_including_obsolete_deleted(set((n1,)))
+        self.assertSetEqual(g.deleted_nodes, set((n1, n2, n3)))
+
+        g.unmark_deleted()
+
+        g.mark_members_including_obsolete_deleted(set((n3,)))
+        self.assertSetEqual(g.deleted_nodes, set((n1, n2, n3)))
+
+    def test_graph_mark_members_including_obsolete_deleted_complex(self):
         # n1 --e1-------------------------- n5
         # n2 --e2(p=0.5)--> n3 --e6------>/ ▲
         #    \            /    \            |
@@ -1873,3 +2245,124 @@ class TestGraph(tests.common.PurgatoryTestCase):
         self.assertTrue(e7.deleted)
         self.assertSetEqual(g.deleted_nodes, set((n1, n2, n3, n4, n5)))
         self.assertSetEqual(g.deleted_edges, set((e1, e2, e3, e4, e5, e6, e7)))
+
+    def test_first_mark_delete(self):
+        #    /--e1(p=0.5)--> n2
+        # n1
+        #    \--e2(p=0.5)--> n3
+        n1 = Node(uid="n1")
+        n2 = Node(uid="n2")
+        n3 = Node(uid="n3")
+
+        e1 = OrEdge(n1, n2)
+        e2 = OrEdge(n1, n3)
+
+        def init_nodes_and_edges(graph):
+            graph._add_node(n1)
+            graph._add_node(n2)
+            graph._add_node(n3)
+
+            graph._add_edge(e1)
+            graph._add_edge(e2)
+
+        Graph(init_nodes_and_edges)
+
+        # Before any checks mark e1 as deleted.
+        e1.mark_deleted()
+
+        #                    n2
+        # n1
+        #    \--e2(p=0.5)--> n3
+        self.assertTrue(e1.deleted)
+        self.assertTrue(abs(e2.probability - 1.0) < purgatory.graph.EPSILON)
+
+        self.assertSetEqual(n1.outgoing_nodes, set((n3,)))
+        self.assertSetEqual(n1.outgoing_nodes_recursive, set((n3,)))
+
+        self.assertSetEqual(n2.outgoing_nodes, set())
+        self.assertSetEqual(n2.outgoing_nodes_recursive, set())
+
+        self.assertSetEqual(n3.outgoing_nodes, set())
+        self.assertSetEqual(n3.outgoing_nodes_recursive, set())
+
+        self.assertSetEqual(n3.incoming_nodes, set((n1,)))
+        self.assertSetEqual(n3.incoming_nodes_recursive, set((n1,)))
+
+        self.assertSetEqual(n2.incoming_nodes, set())
+        self.assertSetEqual(n2.incoming_nodes_recursive, set())
+
+        self.assertSetEqual(n1.incoming_nodes, set())
+        self.assertSetEqual(n1.incoming_nodes_recursive, set())
+
+    def test_leaf_nodes(self):
+        # Tests all code paths of the leaf nodes method.  This is tricky as the
+        # nodes in the graph will be put in a set and thus coverage results
+        # will be random.  Because of this all tests will be run 100 times to
+        # make it more likely that this test reaches full coverage.
+
+        # Test stage 1 of leaf_nodes:
+        # n1 --e1--> n2
+        nodes = [None, None]
+        edges = [None]
+        for _ in range(100):
+            id1 = random.randint(0, 1000)
+            id2 = random.randint(0, 1000)
+            while id1 == id2:
+                id2 = random.randint(0, 1000)
+            n1 = Node(uid=str(id1))
+            n2 = Node(uid=str(id2))
+            nodes[0] = n1
+            nodes[1] = n2
+
+            e1 = Edge(n1, n2)
+            edges[0] = e1
+
+            def init_nodes_and_edges1(graph):
+                graph._add_node(nodes[0])
+                graph._add_node(nodes[1])
+
+                graph._add_edge(edges[0])
+
+            g = Graph(init_nodes_and_edges1)
+
+            self.assertSetEqual(g.leaf_nodes_flat, set((n1,)))  # Layer 1
+            n1.mark_deleted()
+            self.assertSetEqual(g.leaf_nodes_flat, set((n2,)))  # Layer 2
+            n2.mark_deleted()
+            self.assertSetEqual(g.leaf_nodes_flat, set())  # Nothing left
+
+        # Test stage 2 of leaf_nodes:
+        #   /<-----\
+        # n1 --e1--/
+        #   \--e2--> n2
+        nodes = [None, None]
+        edges = [None, None]
+        for _ in range(100):
+            id1 = random.randint(0, 1000)
+            id2 = random.randint(0, 1000)
+            while id1 == id2:
+                id2 = random.randint(0, 1000)
+            n1 = Node(uid=str(id1))
+            n2 = Node(uid=str(id2))
+            nodes[0] = n1
+            nodes[1] = n2
+
+            e1 = Edge(n1, n1)
+            e2 = Edge(n1, n2)
+            edges[0] = e1
+            edges[1] = e2
+
+            def init_nodes_and_edges2(graph):
+                graph._add_node(nodes[0])
+                graph._add_node(nodes[1])
+
+                graph._add_edge(edges[0])
+                graph._add_edge(edges[1])
+
+            g = Graph(init_nodes_and_edges2)
+
+            self.assertSetEqual(g.leaf_nodes_flat, set((n1,)))  # Layer 1
+            n1.mark_deleted()
+            self.assertSetEqual(g.leaf_nodes_flat, set((n2,)))  # Layer 2
+            n2.mark_deleted()
+            self.assertSetEqual(g.leaf_nodes_flat, set())  # Nothing left

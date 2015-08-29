@@ -59,8 +59,8 @@ class TestSystemDpkgGraph(tests.common.PurgatoryTestCase):
     def test_profile_leaf_nodes(self):
         # Determines all layers of the graph by the help of the
         # Graph.leaf_nodes_flat property and Node.mark_deleted() method.
-        # This test ensures that the all graphs can be dissected into layer
-        # by this method.  If this isn't the case within the layer_index limit
+        # This test ensures that all graphs can be dissected into layers by
+        # this method.  If this isn't the case within the layer_index limit
         # then something is wrong with the Graph.leaf_nodes property.
         graph = self.graph
         layer = None

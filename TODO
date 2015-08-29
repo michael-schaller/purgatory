@@ -25,6 +25,7 @@ MS:
 
 * Add README.md file with instructions for:
   - Build status (Travis)
+  - Coverage status (Coveralls)
   - How to use
   - Link to documentation
   - Link to Slack
