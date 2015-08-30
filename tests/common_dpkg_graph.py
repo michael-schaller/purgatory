@@ -152,13 +152,12 @@ class CommonDpkgGraphTestsMixin(object):
     def test_outgoing_nodes_recursive_get_cache(self):
         graph = self.graph
         dynamic = purgatory.graph.Node.dynamic_cached_result
-        default = purgatory.graph.Node.default_cached_result
         static = purgatory.graph.Node.static_cached_result
-        graph_cl = graph._mark_deleted_outgoing_cache_level
+        graph_cl = graph._mark_deleted_outgoing_cache_level  # noqa  # pylint: disable=protected-access
 
         # By default no node has a cache and the cache type is always dynamic.
         for node in graph.nodes.values():
-            cr, ct = node._outgoing_nodes_recursive_get_cache(
+            cr, ct = node._outgoing_nodes_recursive_get_cache(  # noqa  # pylint: disable=protected-access
                 graph_cl=graph_cl)
             self.assertEquals(cr, None)
             self.assertEquals(ct, dynamic)
@@ -166,8 +165,8 @@ class CommonDpkgGraphTestsMixin(object):
         # Generate outgoing nodes recursive caches for all nodes and check
         # the cache type.
         for node in graph.nodes.values():
-            node.outgoing_nodes_recursive
-            cr, ct = node._outgoing_nodes_recursive_get_cache(
+            node.outgoing_nodes_recursive  # noqa  # pylint: disable=pointless-statement
+            cr, ct = node._outgoing_nodes_recursive_get_cache(  # noqa  # pylint: disable=protected-access
                 graph_cl=graph_cl)
 
             # The cache type must be for all nodes either default or static.
@@ -177,6 +176,6 @@ class CommonDpkgGraphTestsMixin(object):
             # must be also of type static.
             if ct == static:
                 for cr_node in cr:
-                    _, ct2 = cr_node._outgoing_nodes_recursive_get_cache(
+                    _, ct2 = cr_node._outgoing_nodes_recursive_get_cache(  # noqa  # pylint: disable=protected-access
                         graph_cl=graph_cl)
                     self.assertEquals(ct2, static)

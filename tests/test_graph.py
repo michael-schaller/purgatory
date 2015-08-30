@@ -382,10 +382,10 @@ class TestGraph(tests.common.PurgatoryTestCase):
         self.assertFalse(n.deleted)
 
     def test_mark_deleted_edge_and_graph(self):
-        # Relationship: nf --ei--> n --eo--> nt
-        n = Node()
-        nf = Node()
-        nt = Node()
+        # nf --ei--> n --eo--> nt
+        n = Node(uid="n")
+        nf = Node(uid="nf")
+        nt = Node(uid="nt")
 
         ei = Edge(nf, n)
         eo = Edge(n, nt)
@@ -399,14 +399,32 @@ class TestGraph(tests.common.PurgatoryTestCase):
             graph._add_edge(eo)
 
         g = Graph(init_nodes_and_edges)
+        # nf --ei--> n --eo--> nt
 
         self.assertFalse(nf.deleted)
         self.assertFalse(ei.deleted)
         self.assertFalse(n.deleted)
         self.assertFalse(eo.deleted)
         self.assertFalse(nt.deleted)
+
+        self.assertSetEqual(nf.incoming_edges, set())
+        self.assertSetEqual(n.incoming_edges, set((ei,)))
+        self.assertSetEqual(nt.incoming_edges, set((eo,)))
+
+        self.assertSetEqual(nf.incoming_nodes, set())
+        self.assertSetEqual(n.incoming_nodes, set((nf,)))
+        self.assertSetEqual(nt.incoming_nodes, set((n,)))
+
+        self.assertSetEqual(nf.outgoing_edges, set((ei,)))
+        self.assertSetEqual(n.outgoing_edges, set((eo,)))
+        self.assertSetEqual(nt.outgoing_edges, set())
+
+        self.assertSetEqual(nf.outgoing_nodes, set((n,)))
+        self.assertSetEqual(n.outgoing_nodes, set((nt,)))
+        self.assertSetEqual(nt.outgoing_nodes, set())
 
         nf.mark_deleted()
+        #            n --eo--> nt
 
         self.assertTrue(nf.deleted)
         self.assertTrue(ei.deleted)
@@ -414,15 +432,45 @@ class TestGraph(tests.common.PurgatoryTestCase):
         self.assertFalse(eo.deleted)
         self.assertFalse(nt.deleted)
 
+        self.assertSetEqual(n.incoming_edges, set())
+        self.assertSetEqual(nt.incoming_edges, set((eo,)))
+
+        self.assertSetEqual(n.incoming_nodes, set())
+        self.assertSetEqual(nt.incoming_nodes, set((n,)))
+
+        self.assertSetEqual(n.outgoing_edges, set((eo,)))
+        self.assertSetEqual(nt.outgoing_edges, set())
+
+        self.assertSetEqual(n.outgoing_nodes, set((nt,)))
+        self.assertSetEqual(nt.outgoing_nodes, set())
+
         g.unmark_deleted()
+        # nf --ei--> n --eo--> nt
 
         self.assertFalse(n.deleted)
         self.assertFalse(nf.deleted)
         self.assertFalse(nt.deleted)
         self.assertFalse(ei.deleted)
         self.assertFalse(eo.deleted)
+
+        self.assertSetEqual(nf.incoming_edges, set())
+        self.assertSetEqual(n.incoming_edges, set((ei,)))
+        self.assertSetEqual(nt.incoming_edges, set((eo,)))
+
+        self.assertSetEqual(nf.incoming_nodes, set())
+        self.assertSetEqual(n.incoming_nodes, set((nf,)))
+        self.assertSetEqual(nt.incoming_nodes, set((n,)))
+
+        self.assertSetEqual(nf.outgoing_edges, set((ei,)))
+        self.assertSetEqual(n.outgoing_edges, set((eo,)))
+        self.assertSetEqual(nt.outgoing_edges, set())
+
+        self.assertSetEqual(nf.outgoing_nodes, set((n,)))
+        self.assertSetEqual(n.outgoing_nodes, set((nt,)))
+        self.assertSetEqual(nt.outgoing_nodes, set())
 
         ei.mark_deleted()
+        #            n --eo--> nt
 
         self.assertTrue(nf.deleted)
         self.assertTrue(ei.deleted)
@@ -430,7 +478,20 @@ class TestGraph(tests.common.PurgatoryTestCase):
         self.assertFalse(eo.deleted)
         self.assertFalse(nt.deleted)
 
+        self.assertSetEqual(n.incoming_edges, set())
+        self.assertSetEqual(nt.incoming_edges, set((eo,)))
+
+        self.assertSetEqual(n.incoming_nodes, set())
+        self.assertSetEqual(nt.incoming_nodes, set((n,)))
+
+        self.assertSetEqual(n.outgoing_edges, set((eo,)))
+        self.assertSetEqual(nt.outgoing_edges, set())
+
+        self.assertSetEqual(n.outgoing_nodes, set((nt,)))
+        self.assertSetEqual(nt.outgoing_nodes, set())
+
         g.unmark_deleted()
+        # nf --ei--> n --eo--> nt
 
         self.assertFalse(n.deleted)
         self.assertFalse(nf.deleted)
@@ -438,13 +499,38 @@ class TestGraph(tests.common.PurgatoryTestCase):
         self.assertFalse(ei.deleted)
         self.assertFalse(eo.deleted)
 
+        self.assertSetEqual(nf.incoming_edges, set())
+        self.assertSetEqual(n.incoming_edges, set((ei,)))
+        self.assertSetEqual(nt.incoming_edges, set((eo,)))
+
+        self.assertSetEqual(nf.incoming_nodes, set())
+        self.assertSetEqual(n.incoming_nodes, set((nf,)))
+        self.assertSetEqual(nt.incoming_nodes, set((n,)))
+
+        self.assertSetEqual(nf.outgoing_edges, set((ei,)))
+        self.assertSetEqual(n.outgoing_edges, set((eo,)))
+        self.assertSetEqual(nt.outgoing_edges, set())
+
+        self.assertSetEqual(nf.outgoing_nodes, set((n,)))
+        self.assertSetEqual(n.outgoing_nodes, set((nt,)))
+        self.assertSetEqual(nt.outgoing_nodes, set())
+
         n.mark_deleted()
+        #                      nt
 
         self.assertTrue(nf.deleted)
         self.assertTrue(ei.deleted)
         self.assertTrue(n.deleted)
         self.assertTrue(eo.deleted)
         self.assertFalse(nt.deleted)
+
+        self.assertSetEqual(nt.incoming_edges, set())
+
+        self.assertSetEqual(nt.incoming_nodes, set())
+
+        self.assertSetEqual(nt.outgoing_edges, set())
+
+        self.assertSetEqual(nt.outgoing_nodes, set())
 
     def test_member_init_str(self):
 
