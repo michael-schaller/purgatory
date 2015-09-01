@@ -4,6 +4,7 @@
 # pylint: disable=missing-docstring
 
 
+import itertools
 import logging
 import unittest
 
@@ -151,8 +152,8 @@ class CommonDpkgGraphTestsMixin(object):
 
     def test_outgoing_nodes_recursive_get_cache(self):
         graph = self.graph
-        dynamic = purgatory.graph.Node.dynamic_cached_result
-        static = purgatory.graph.Node.static_cached_result
+        dynamic = purgatory.graph.Node.dynamic_result_type
+        static = purgatory.graph.Node.static_result_type
         graph_cl = graph._mark_deleted_outgoing_cache_level  # noqa  # pylint: disable=protected-access
 
         # By default no node has a cache and the cache type is always dynamic.
@@ -179,3 +180,21 @@ class CommonDpkgGraphTestsMixin(object):
                     _, ct2 = cr_node._outgoing_nodes_recursive_get_cache(  # noqa  # pylint: disable=protected-access
                         graph_cl=graph_cl)
                     self.assertEquals(ct2, static)
+
+    def test_mark_members_including_obsolete_deleted(self):
+        graph = self.graph
+
+        # For each leaf calculate the nodes that would be marked removed if
+        # the leaf would be removed including the obsolete nodes.  This is the
+        # typical workload in case Purgatory shows the leaf nodes and details.
+        deleted_clusters = set()
+        for leaf in graph.leaf_nodes:
+            graph.mark_members_including_obsolete_deleted(leaf)
+            deleted_clusters.add(graph.deleted_nodes)
+            graph.unmark_deleted()  # Reset graph.
+
+        # Each of the clusters of deleted nodes must be disjunct or otherwise
+        # mark_members_including_obsolete_deleted would have marked nodes as
+        # deleted that are still needed by other leaf nodes/cycles.
+        for c1, c2 in itertools.permutations(deleted_clusters, 2):
+            self.assertFalse(c1 & c2)

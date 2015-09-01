@@ -1056,9 +1056,9 @@ class TestGraph(tests.common.PurgatoryTestCase):
 
         g = Graph(init_nodes_and_edges)
 
-        dynamic = purgatory.graph.Node.dynamic_cached_result
-        default = purgatory.graph.Node.default_cached_result
-        static = purgatory.graph.Node.static_cached_result
+        dynamic = purgatory.graph.Node.dynamic_result_type
+        default = purgatory.graph.Node.default_result_type
+        static = purgatory.graph.Node.static_result_type
 
         def validate_cache(node, exptected_cache_result, exptected_cache_type):
             graph_cl = g._mark_deleted_outgoing_cache_level
@@ -1798,54 +1798,117 @@ class TestGraph(tests.common.PurgatoryTestCase):
         self.assertTrue(e4.deleted)
 
     def test_graph_mark_members_including_obsolete_deleted(self):
-        # n1 --e1-->\
-        # n2 --e2--> n3 --e3--\
-        #              \<-----/
+        # n1 --e1-------------------->\
+        # n2 --e2--> n3 --e3(p=1.0)--> n4 --e4--\
+        #                                \<-----/
         n1 = Node(uid="n1")
         n2 = Node(uid="n2")
         n3 = Node(uid="n3")
+        n4 = Node(uid="n4")
 
-        e1 = Edge(n1, n3)
+        e1 = Edge(n1, n4)
         e2 = Edge(n2, n3)
-        e3 = Edge(n3, n3)
+        e3 = Edge(n3, n4)
+        e4 = OrEdge(n4, n4)
 
         def init_nodes_and_edges(graph):
             graph._add_node(n1)
             graph._add_node(n2)
             graph._add_node(n3)
+            graph._add_node(n4)
 
             graph._add_edge(e1)
             graph._add_edge(e2)
             graph._add_edge(e3)
+            graph._add_edge(e4)
 
         g = Graph(init_nodes_and_edges)
 
         self.assertFalse(n1.in_cycle)
         self.assertFalse(n2.in_cycle)
-        self.assertTrue(n3.in_cycle)
+        self.assertFalse(n3.in_cycle)
+        self.assertTrue(n4.in_cycle)
 
         self.assertSetEqual(n1.cycle_nodes, set())
         self.assertSetEqual(n2.cycle_nodes, set())
-        self.assertSetEqual(n3.cycle_nodes, set((n3,)))
+        self.assertSetEqual(n3.cycle_nodes, set())
+        self.assertSetEqual(n4.cycle_nodes, set((n4,)))
 
         g.mark_members_including_obsolete_deleted(set((n1,)))
+        #
+        # n2 --e2--> n3 --e3--> n4 --e4--\
+        #                         \<-----/
         self.assertSetEqual(g.deleted_nodes, set((n1,)))
+        self.assertFalse(n2.in_cycle)
+        self.assertFalse(n3.in_cycle)
+        self.assertTrue(n4.in_cycle)
 
         g.mark_members_including_obsolete_deleted(set((n2,)))
-        self.assertSetEqual(g.deleted_nodes, set((n1, n2, n3)))
+        #
+        #
+        #
+        self.assertSetEqual(g.deleted_nodes, set((n1, n2, n3, n4)))
 
         g.unmark_deleted()
+        # n1 --e1------------->\
+        # n2 --e2--> n3 --e3--> n4 --e4--\
+        #                         \<-----/
+        self.assertFalse(n1.in_cycle)
+        self.assertFalse(n2.in_cycle)
+        self.assertFalse(n3.in_cycle)
+        self.assertTrue(n4.in_cycle)
 
         g.mark_members_including_obsolete_deleted(set((n2,)))
-        self.assertSetEqual(g.deleted_nodes, set((n2,)))
+        # n1 --e1------------->\
+        #                       n4 --e4--\
+        #                         \<-----/
+        self.assertSetEqual(g.deleted_nodes, set((n2, n3)))
+        self.assertFalse(n1.in_cycle)
+        self.assertTrue(n4.in_cycle)
 
         g.mark_members_including_obsolete_deleted(set((n1,)))
-        self.assertSetEqual(g.deleted_nodes, set((n1, n2, n3)))
+        #
+        #
+        #
+        self.assertSetEqual(g.deleted_nodes, set((n1, n2, n3, n4)))
 
         g.unmark_deleted()
+        # n1 --e1------------->\
+        # n2 --e2--> n3 --e3--> n4 --e4--\
+        #                         \<-----/
+        self.assertFalse(n1.in_cycle)
+        self.assertFalse(n2.in_cycle)
+        self.assertFalse(n3.in_cycle)
+        self.assertTrue(n4.in_cycle)
 
         g.mark_members_including_obsolete_deleted(set((n3,)))
-        self.assertSetEqual(g.deleted_nodes, set((n1, n2, n3)))
+        # n1 --e1------------->\
+        #                       n4 --e4--\
+        #                         \<-----/
+        self.assertSetEqual(g.deleted_nodes, set((n2, n3)))
+        self.assertFalse(n1.in_cycle)
+        self.assertTrue(n4.in_cycle)
+
+        g.mark_members_including_obsolete_deleted(set((n1,)))
+        #
+        #
+        #
+        self.assertSetEqual(g.deleted_nodes, set((n1, n2, n3, n4)))
+
+        g.unmark_deleted()
+        # n1 --e1------------->\
+        # n2 --e2--> n3 --e3--> n4 --e4--\
+        #                         \<-----/
+        self.assertFalse(n1.in_cycle)
+        self.assertFalse(n2.in_cycle)
+        self.assertFalse(n3.in_cycle)
+        self.assertTrue(n4.in_cycle)
+
+        g.mark_members_including_obsolete_deleted(set((n4,)))
+        #
+        #
+        #
+        self.assertSetEqual(g.deleted_nodes, set((n1, n2, n3, n4)))
 
     def test_graph_mark_members_including_obsolete_deleted_complex(self):
         # n1 --e1-------------------------- n5

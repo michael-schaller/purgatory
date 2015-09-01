@@ -268,19 +268,16 @@ class Graph(abc.ABC):
 
             onrs = node.outgoing_nodes_recursive
             if node.in_cycle:
-                # Node is in a cycle.  Add this node to the
-                # stage3_nodes_to_visit set to look at it in stage 3.
-                # One node of the cycle is enough to track the whole cycle.
-                stage3_nodes_to_visit.add(node)
-
-                # Don't visit any further nodes of this cycle or nodes below
-                # this cycle in stage 2.
+                # Node is in a cycle.  Don't visit any further nodes of this
+                # cycle or nodes below this cycle in stage 2.
                 stage2_nodes_to_visit -= onrs
 
                 # Remove all nodes below this cycle as these can't be leaf
                 # nodes/cycles and thus don't need to be visited in stage 3.
-                below = onrs - node.cycle_nodes
-                stage3_nodes_to_visit -= below
+                # Also don't visit any further nodes of this cycle as one node
+                # of the cycle is enough to track the whole cycle.
+                stage3_nodes_to_visit -= onrs
+                stage3_nodes_to_visit |= set((node,))
             else:
                 # Node isn't in a cycle and isn't a leaf node.  This node and
                 # all nodes below it can't be leaf nodes/cycles and hence don't
@@ -292,7 +289,7 @@ class Graph(abc.ABC):
         # All the nodes that are left are part of leaf cycles.  All that's left
         # to do is to add the cycle_nodes sets to the leafs set.
         for node in stage3_nodes_to_visit:
-            leafs.add(node.cycle_nodes)
+            leafs |= set((node.cycle_nodes,))
 
         return frozenset(leafs)
 
@@ -590,9 +587,9 @@ class Member(abc.ABC):
 class Node(Member):  # pylint: disable=abstract-method
     """Abstract Node base class."""
 
-    dynamic_cached_result = collections.namedtuple("DynamicCacheResult", [])
-    static_cached_result = collections.namedtuple("StaticCacheResult", [])
-    default_cached_result = collections.namedtuple("DefaultCacheResult", [])
+    dynamic_result_type = collections.namedtuple("DynamicCacheResult", [])
+    static_result_type = collections.namedtuple("StaticCacheResult", [])
+    default_result_type = collections.namedtuple("DefaultCacheResult", [])
 
     def __init__(self, uid):
         # Protected data (readonly after initialization)
@@ -620,6 +617,10 @@ class Node(Member):  # pylint: disable=abstract-method
         self._outgoing_nodes_recursive_cache_level = 0
         self._outgoing_nodes_recursive_built_at_cl = 0
         self._outgoing_nodes_recursive_invalidated_at_cl = 0
+        self._in_cycle_static = None
+        self._cycle_nodes_static = None
+        self._cycle_nodes_cache = None
+        self._cycle_nodes_cache_built_at_cl = 0
 
         # Init
         super().__init__(uid)
@@ -702,6 +703,16 @@ class Node(Member):  # pylint: disable=abstract-method
 
         If this node isn't part of a cycle an empty set will be returned.
         """
+        cycle_nodes_static = self._cycle_nodes_static
+        if cycle_nodes_static is not None:
+            return cycle_nodes_static
+
+        graph_cl = self.graph._mark_deleted_outgoing_cache_level  # noqa  # pylint: disable=protected-access
+        cycle_nodes_cache = self._cycle_nodes_cache
+        if cycle_nodes_cache is not None:
+            if self._cycle_nodes_cache_built_at_cl == graph_cl:
+                return cycle_nodes_cache
+
         # The cycle nodes are all the nodes that are in the incoming and
         # outgoing nodes recursive sets (intersection).  Typically the incoming
         # nodes recursive set hasn't been calculate yet and it is expensive
@@ -712,7 +723,10 @@ class Node(Member):  # pylint: disable=abstract-method
         # the incoming and outgoing nodes recursive sets.  This is typically a
         # lot faster as the incoming nodes that are part of the cycle are a lot
         # less than the full incoming nodes recursive set.
-        onrs = self.outgoing_nodes_recursive
+        onrs, rt = self._outgoing_nodes_recursive
+        if self not in onrs:
+            return EMPTY_FROZEN_SET  # Not a cycle.
+
         to_visit = set((self,))
         visited = set()
         cycle_nodes = set()
@@ -727,8 +741,91 @@ class Node(Member):  # pylint: disable=abstract-method
             cycle_nodes |= incoming_cycle_nodes
             to_visit |= incoming_cycle_nodes
             to_visit -= visited
+        cycle_nodes = frozenset(cycle_nodes)
 
-        return frozenset(cycle_nodes)
+        # Determine if this cycle is static.  A cycle is static if and only if
+        # it has no edges or type OrEdge.  As edges of type OrEdge are
+        # important for the outgoing sets it is already predetermined if a node
+        # has outgoing edges of type OrEdge and if such a node is part of the
+        # cycle then the cycle could be broken up and hence the cycle can't be
+        # static.
+        static = True
+        if rt != Node.static_result_type:
+            for node in cycle_nodes:
+                if node._outgoing_or_edges:  # noqa  # pylint: disable=protected-access
+                    static = False
+                    break
+
+        if static:
+            for node in cycle_nodes:
+                node._in_cycle_static = True  # noqa  # pylint: disable=protected-access
+                node._cycle_nodes_static = cycle_nodes  # noqa  # pylint: disable=protected-access
+
+        self._cycle_nodes_cache = cycle_nodes
+        self._cycle_nodes_cache_built_at_cl = graph_cl
+        return cycle_nodes
+
+    @property
+    def in_cycle(self):
+        """Returns True if this Node is part of a cycle."""
+        # Check if a result that is independent of the graph state has been
+        # previously determined and cached.  If yes, return the previous
+        # cached result.
+        in_cycle_static = self._in_cycle_static
+        if in_cycle_static is not None:
+            return in_cycle_static
+
+        # Simple checks if this node is part of a cycle.
+        incoming_nodes = self.incoming_nodes
+        if not incoming_nodes:
+            # A leaf node can't be in a cycle.
+            return False
+        shared_nodes = self.outgoing_nodes & incoming_nodes
+        if shared_nodes:
+            # There is at least one node in the incoming and outgoing nodes
+            # sets and hence this node is in a cycle with this/these node(s).
+            # Before returning True it'll be interesting if this result is
+            # static so that there is no need to reevaluate for future calls.
+            # A cycle is static if and only if it has no edges or type OrEdge.
+            # As edges of type OrEdge are important for the outgoing sets it is
+            # already predetermined if a node has outgoing edges of type OrEdge
+            # and if such a node is part of the cycle then the cycle could be
+            # broken up and hence the cycle can't be static.
+            if not self._outgoing_or_edges:
+                static = True
+                for node in shared_nodes:
+                    if node._outgoing_or_edges:  # noqa  # pylint: disable=protected-access
+                        static = False
+                        break
+                if static:
+                    self._in_cycle_static = True
+                    for node in shared_nodes:
+                        node._in_cycle_static = True  # noqa  # pylint: disable=protected-access
+            return True
+
+        # No more simple tests possible and hence a recusrive nodes set is
+        # needed.  Result-wise it doesn't matter if this test uses the
+        # recursive incoming nodes set or the recursive outgoing nodes set as
+        # the result is in both cases the same.  Performance-wise the recursive
+        # outgoing nodes set is typically in favor because of three reasons:
+        # 1) Graphs that model a hierarchy typically have a lot more nodes on
+        #    the top than the bottom and hence the recursive outgoing nodes set
+        #    is often cheaper to calculate.
+        # 2) The outgoing sets have a superior cache strategy and are far less
+        #    often invalidated than the caches for the incomings sets.
+        # 3) The outgoing sets are often already determined and cached.
+        onrs, rt = self._outgoing_nodes_recursive
+        in_cycle = self in onrs
+
+        # Cache static result.
+        if rt == Node.static_result_type:
+            self._in_cycle_static = in_cycle
+        elif rt == Node.default_result_type and not in_cycle:
+            # If the result is the default result and the node isn't part of a
+            # cycle then it'lll be never part of a cycle.
+            self._in_cycle_static = False
+
+        return in_cycle
 
     @property
     def incoming_cycle_nodes(self):
@@ -915,32 +1012,6 @@ class Node(Member):  # pylint: disable=abstract-method
         return self._incoming_nodes_recursive_cache
 
     @property
-    def in_cycle(self):
-        """Returns True if this Node is part of a cycle."""
-        # Simple checks if this node can be part of a cycle.
-        incoming_nodes = self.incoming_nodes
-        if not incoming_nodes:
-            return False
-        if self.outgoing_nodes & incoming_nodes:
-            # There is at least one node in the incoming and outgoing nodes
-            # sets and hence this node is in a cycle with this/these node(s).
-            return True
-
-        # Result-wise it doesn't matter if this test uses the recursive
-        # incoming nodes set or the recursive outgoing nodes set - the result
-        # is in both cases the same.
-        # Performance-wise the recursive outgoing nodes set is typically in
-        # favor because of two reasons:
-        # 1) Graphs that model a hierarchy typically have a lot more nodes on
-        #    top than the bottom and hence the recursive outgoing nodes set is
-        #    often cheaper to calculate.
-        # 2) The outgoing sets have a superior cache strategy and are far less
-        #    often invalidated than the caches for the incomings sets.
-        if self in self.outgoing_nodes_recursive:
-            return True
-        return False
-
-    @property
     def is_node_instance(self):
         """Returns True if this object is a Node instance.
 
@@ -1009,12 +1080,12 @@ class Node(Member):  # pylint: disable=abstract-method
         """
         onrc = self._outgoing_nodes_recursive_cache
         if onrc is None:
-            return (None, Node.dynamic_cached_result)  # No cached result.
+            return (None, Node.dynamic_result_type)  # No cached result.
 
         if self._outgoing_nodes_recursive_static:
             # The outgoing nodes recursive set is static and hence can be
             # reused indefinitely.
-            return (onrc, Node.static_cached_result)
+            return (onrc, Node.static_result_type)
 
         default_onrc = self._outgoing_nodes_recursive_default_cache
         if default_onrc:
@@ -1022,13 +1093,13 @@ class Node(Member):  # pylint: disable=abstract-method
             # cache level then just return the default cache result.
             local_cl = self._outgoing_nodes_recursive_default_cache_level
             if local_cl == graph_cl:
-                return (default_onrc, Node.default_cached_result)
+                return (default_onrc, Node.default_result_type)
 
         # If the last cached result is still valid for this outgoing graph
         # cache level then just return the last (dynamic) cache result.
         local_cl = self._outgoing_nodes_recursive_cache_level
         if local_cl == graph_cl:
-            return (onrc, Node.dynamic_cached_result)
+            return (onrc, Node.dynamic_result_type)
 
         self_set = set((self,))
         self_outgoing_nodes = self.outgoing_nodes
@@ -1050,7 +1121,7 @@ class Node(Member):  # pylint: disable=abstract-method
                         break
             if untouched:
                 self._outgoing_nodes_recursive_default_cache_level = graph_cl
-                return (default_onrc, Node.default_cached_result)
+                return (default_onrc, Node.default_result_type)
 
         # Local and graph cache level differ.  Check if the cached result is
         # still valid by checking if the cached result of this and each node
@@ -1072,24 +1143,28 @@ class Node(Member):  # pylint: disable=abstract-method
                 if invalid_at > built_at:
                     # Cached result is no longer valid because at least one
                     # part is no longer valid!
-                    return (None, Node.dynamic_cached_result)
+                    return (None, Node.dynamic_result_type)
                 if built_at > self_built_at:
                     # Cached result is no longer valid because at least one
                     # part is newer!
-                    return (None, Node.dynamic_cached_result)
+                    return (None, Node.dynamic_result_type)
 
         # Cached result is still valid.  Update the local cache level to avoid
         # needless reiteration of this check and then return the cached result.
         self._outgoing_nodes_recursive_cache_level = graph_cl
-        return (onrc, Node.dynamic_cached_result)
+        return (onrc, Node.dynamic_result_type)
 
-    def _outgoing_nodes_recursive(self, graph_cl):
+    def _determine_outgoing_nodes_recursive(self, graph_cl):
         """Helper function to determine the outgoing recursive nodes.
 
-        Afterwards it caches the result on the node.
+        Afterwards it caches the result on the node and returns the result and
+        result type.
 
         Args:
             graph_cl: The current graph outgoing cache level.
+
+        Returns:
+            Returns a tuple of result and result type.
         """
         # Determine the outgoing nodes of this node recursively.
         to_visit = set((self,))
@@ -1135,14 +1210,14 @@ class Node(Member):  # pylint: disable=abstract-method
                     # The node has a valid cache.  Check if the cached result
                     # is static and if it isn't then this result isn't static
                     # either.
-                    if cr_type != Node.static_cached_result:  # noqa  # pylint: disable=protected-access
+                    if cr_type != Node.static_result_type:  # noqa  # pylint: disable=protected-access
                         outgoing_nodes_recursive_static = False
 
                     # Check if the cached result is a default/untouched or
                     # static result.  If it isn't then this result isn't a
                     # default/untouched result.
-                    if (cr_type != Node.default_cached_result and
-                            cr_type != Node.static_cached_result):
+                    if (cr_type != Node.default_result_type and
+                            cr_type != Node.static_result_type):
                         outgoing_nodes_recursive_default = False
 
                     # Add the cached result of the node to the result, update
@@ -1155,11 +1230,66 @@ class Node(Member):  # pylint: disable=abstract-method
         frozen_onrs = frozenset(outgoing_nodes_recursive)
         self._outgoing_nodes_recursive_cache = frozen_onrs
         self._outgoing_nodes_recursive_static = outgoing_nodes_recursive_static
+        if outgoing_nodes_recursive_static:
+            return (frozen_onrs, Node.static_result_type)
         if outgoing_nodes_recursive_default:
             self._outgoing_nodes_recursive_default_cache = frozen_onrs
             self._outgoing_nodes_recursive_default_cache_level = graph_cl
+            return (frozen_onrs, Node.default_result_type)
         self._outgoing_nodes_recursive_cache_level = graph_cl
         self._outgoing_nodes_recursive_built_at_cl = graph_cl
+        return (frozen_onrs, Node.dynamic_result_type)
+
+    @property
+    def _outgoing_nodes_recursive(self):
+        """Returns the outgoing recursive nodes and the result type.
+
+        Returns:
+            Returns a tuple of result and result type.
+        """
+        graph_cl = self.graph._mark_deleted_outgoing_cache_level  # noqa  # pylint: disable=protected-access
+
+        # Stage 1 - Idenitfy all outgoing nodes that don't have their result
+        # for the outgoing_nodes_recursive property cached and their distance
+        # to this node.
+        to_visit = {self: 0}  # node:distance
+        visited = set()
+        missing_cache = {}  # node:distance
+        last_onrs = None
+        last_rt = None
+        while to_visit:
+            node, distance = to_visit.popitem()
+            if node in visited:
+                continue  # Node has been already visited.
+            visited |= set((node,))  # Faster than visited.add(cn)
+
+            # Check if the node has a valid cache.
+            last_onrs, last_rt = node._outgoing_nodes_recursive_get_cache(  # noqa  # pylint: disable=protected-access
+                graph_cl=graph_cl)
+            if last_onrs is not None:
+                # The node has a valid cache and thus it and all nodes below it
+                # aren't of interest to stage 1.
+                continue
+
+            # This node doesn't have the outgoing_nodes_recursive property
+            # cached.  Record that the node has the cache missing and for all
+            # its outgoing nodes record that they need to be visited.
+            missing_cache[node] = distance
+            for child_node in node.outgoing_nodes:
+                to_visit[child_node] = distance + 1
+
+        # Stage 2 - Get a sorted list (largest distance first) of the nodes
+        # that are missing the cache and then determine the outgoing nodes
+        # recursively via a helper function.  In the end all that's left to do
+        # is to return the last result as the last result is the result for
+        # this node (the only node with distance 0).
+        if missing_cache:
+            missing_cache_nodes = sorted(
+                missing_cache, key=missing_cache.get, reverse=True)
+            for node in missing_cache_nodes:
+                last_onrs, last_rt = node._determine_outgoing_nodes_recursive(  # noqa  # pylint: disable=protected-access
+                    graph_cl=graph_cl)
+        return last_onrs, last_rt
 
     @property
     def outgoing_nodes_recursive(self):
@@ -1186,45 +1316,8 @@ class Node(Member):  # pylint: disable=abstract-method
         """
         if self._deleted:
             raise DeletedMemberInUseError(self)
-        graph_cl = self.graph._mark_deleted_outgoing_cache_level  # noqa  # pylint: disable=protected-access
-
-        # Stage 1 - Idenitfy all outgoing nodes that don't have their result
-        # for the outgoing_nodes_recursive property cached and their distance
-        # to this node.
-        to_visit = {self: 0}  # node:distance
-        visited = set()
-        missing_cache = {}  # node:distance
-        while to_visit:
-            node, distance = to_visit.popitem()
-            if node in visited:
-                continue  # Node has been already visited.
-            visited |= set((node,))  # Faster than visited.add(cn)
-
-            # Check if the node has a valid cache.
-            onrc, _ = node._outgoing_nodes_recursive_get_cache(  # noqa  # pylint: disable=protected-access
-                graph_cl=graph_cl)
-            if onrc is not None:
-                # The node has a valid cache and thus it and all nodes below it
-                # aren't of interest to stage 1.
-                continue
-
-            # This node doesn't have the outgoing_nodes_recursive property
-            # cached.  Record that the node has the cache missing and for all
-            # its outgoing nodes record that they need to be visited.
-            missing_cache[node] = distance
-            for child_node in node.outgoing_nodes:
-                to_visit[child_node] = distance + 1
-
-        # Stage 2 - Get a sorted list (largest distance first) of the nodes
-        # that are missing the cache and then determine the outgoing nodes
-        # recursively via a helper function.  In the end all that's left to do
-        # is to return the cached result for this node.
-        missing_cache_nodes = sorted(
-            missing_cache, key=missing_cache.get, reverse=True)
-        for node in missing_cache_nodes:
-            node._outgoing_nodes_recursive(graph_cl=graph_cl)  # noqa  # pylint: disable=protected-access
-        onrc, _ = self._outgoing_nodes_recursive_get_cache(graph_cl=graph_cl)
-        return onrc
+        onrs, _ = self._outgoing_nodes_recursive  # Throw away return type.
+        return onrs
 
     def mark_deleted(self):
         """Marks the node and its incoming and outgoing edges as deleted."""
