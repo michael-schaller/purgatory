@@ -578,7 +578,7 @@ class TestGraph(tests.common.PurgatoryTestCase):
 
         graph = Graph(init_nodes_and_edges)
 
-        nodes = graph.nodes.values()
+        nodes = graph.nodes
         self.assertTrue(n1 in nodes)
         self.assertTrue(n2 in nodes)
         self.assertEquals(len(nodes), 2)
@@ -599,7 +599,7 @@ class TestGraph(tests.common.PurgatoryTestCase):
 
         graph = Graph(init_nodes_and_edges)
 
-        edges = graph.edges.values()
+        edges = graph.edges
         self.assertTrue(e1 in edges)
         self.assertTrue(e2 in edges)
         self.assertEquals(len(edges), 2)
@@ -612,7 +612,7 @@ class TestGraph(tests.common.PurgatoryTestCase):
         graph = Graph(init_nodes_and_edges)
         n = Node()
         with self.assertRaises(TypeError):
-            graph.nodes[n.uid] = n
+            graph._nodes[n.uid] = n
 
     def test_graph_nodes_add_edge_after_init(self):
 
@@ -622,7 +622,7 @@ class TestGraph(tests.common.PurgatoryTestCase):
         graph = Graph(init_nodes_and_edges)
         e = Edge(Node(), Node())
         with self.assertRaises(TypeError):
-            graph.edges[e.uid] = e
+            graph._edges[e.uid] = e
 
     def test_node_add_incoming_edge_raise_not_an_edge_error(self):
         n = Node()

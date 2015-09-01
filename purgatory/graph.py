@@ -143,29 +143,29 @@ class Graph(abc.ABC):
 
     def __init__(self):
         """Graph constructor."""
-        # Private
-        self.__nodes = {}  # uid:node
-        self.__edges = {}  # uid:edge
-
         # Protected
+        self._nodes = {}  # uid:node
+        self._edges = {}  # uid:edge
+        self._nodes_set = None
+        self._edges_set = None
         self._deleted_nodes = set()
         self._deleted_edges = set()
         self._mark_deleted_incoming_cache_level = 0
         self._mark_deleted_outgoing_cache_level = 0
 
-        # Init
+        # Init and check
         super().__init__()
         self._init_nodes_and_edges()
-
-        # Freeze
-        self.__nodes = types.MappingProxyType(self.__nodes)
-        self.__edges = types.MappingProxyType(self.__edges)
-        self.__freeze_nodes_incoming_and_outgoing_edges_and_nodes()
-
-        # Check
-        for edge in self.__edges.values():
+        for edge in self._edges.values():
             if abs(edge.probability - 0.0) < EPSILON:
                 raise EdgeWithZeroProbabilityError(edge)
+
+        # Freeze
+        self._nodes = types.MappingProxyType(self._nodes)
+        self._edges = types.MappingProxyType(self._edges)
+        self._nodes_set = frozenset(self._nodes.values())
+        self._edges_set = frozenset(self._edges.values())
+        self.__freeze_nodes_incoming_and_outgoing_edges_and_nodes()
 
     @abc.abstractmethod
     def _init_nodes_and_edges(self):
@@ -173,31 +173,40 @@ class Graph(abc.ABC):
 
     def __freeze_nodes_incoming_and_outgoing_edges_and_nodes(self):
         """Freezes the incoming and outgoing edges and node sets."""
-        for node in self.__nodes.values():
+        for node in self._nodes.values():
             node._freeze_incoming_edges_and_nodes()  # noqa  # pylint: disable=protected-access
             node._freeze_outgoing_edges_and_nodes()  # noqa  # pylint: disable=protected-access
 
+    def _add_edge(self, edge):
+        """Adds an edge to the self._edges dict."""
+        if not edge.is_edge_instance:
+            raise NotAnEdgeError(edge)
+        if edge.uid in self._edges:
+            raise MemberAlreadyRegisteredError(edge)
+        edge.graph = self
+        self._edges[edge.uid] = edge
+
     def _add_node(self, node):
-        """Adds a node to the self.__nodes dict."""
+        """Adds a node to the self._nodes dict."""
         if not node.is_node_instance:
             raise NotANodeError(node)
-        if node.uid in self.__nodes:
+        if node.uid in self._nodes:
             raise MemberAlreadyRegisteredError(node)
         node.graph = self
-        self.__nodes[node.uid] = node
+        self._nodes[node.uid] = node
 
     def _add_node_dedup(self, node):
-        """Add the given node to the self.__nodes dict if it isn't tracked yet.
+        """Add the given node to the self._nodes dict if it isn't tracked yet.
 
-        This method checks if the given node is already in the self.__nodes
+        This method checks if the given node is already in the self._nodes
         dict.  If it is the existing node is returned (dedup).  If it isn't
         the given node is added and returned (no-dup).
 
         Returns:
-          Tupel of the node in the self.__nodes dict and a boolean if the
+          Tupel of the node in the self._nodes dict and a boolean if the
           given node was a duplicate.
         """
-        dict_node = self.__nodes.get(node.uid)
+        dict_node = self._nodes.get(node.uid)
         if dict_node:
             return (dict_node, True)  # Deduplicate
         else:
@@ -216,11 +225,14 @@ class Graph(abc.ABC):
 
     @property
     def edges(self):
-        """Returns a dict view (uid:edge) of the edges in the graph.
+        """Returns a set of the edges in the graph.
 
-        The dict view is unfiltered and thus contains deleted edges.
+        This set doesn't include the edges that have been marked as deleted.
+
+        Returns:
+            Set of edges in the graph.
         """
-        return self.__edges
+        return self._edges_set - self._deleted_edges
 
     @property
     def leaf_nodes(self):
@@ -234,7 +246,7 @@ class Graph(abc.ABC):
         single node for leaf nodes or multiple nodes in case of a leaf cycle.
         The outer set contains all inner sets.
         """
-        stage1_nodes_to_visit = set(self.__nodes.values())
+        stage1_nodes_to_visit = set(self._nodes.values())
         stage2_nodes_to_visit = set()
         stage3_nodes_to_visit = set()
         leafs = set()  # Return value
@@ -303,23 +315,6 @@ class Graph(abc.ABC):
         """
         leafs = self.leaf_nodes
         return {node for leaf in leafs for node in leaf}
-
-    @property
-    def nodes(self):
-        """Returns a dict view (uid:node) of the nodes in the graph.
-
-        The dict view is unfiltered and thus contains deleted nodes.
-        """
-        return self.__nodes
-
-    def _add_edge(self, edge):
-        """Adds an edge to the self.__edges dict."""
-        if not edge.is_edge_instance:
-            raise NotAnEdgeError(edge)
-        if edge.uid in self.__edges:
-            raise MemberAlreadyRegisteredError(edge)
-        edge.graph = self
-        self.__edges[edge.uid] = edge
 
     def mark_members_deleted(self, members):
         """Marks the given graph members as deleted."""
@@ -411,6 +406,17 @@ class Graph(abc.ABC):
                     # Node was only needed by nodes that have been already
                     # marked as deleted and hence it is obsolete.
                     to_process |= set((node,))
+
+    @property
+    def nodes(self):
+        """Returns a set of the nodes in the graph.
+
+        This set doesn't include the nodes that have been marked as deleted.
+
+        Returns:
+            Set of edges in the graph.
+        """
+        return self._nodes_set - self._deleted_nodes
 
     def unmark_deleted(self):
         """Unmarks all graph members as deleted."""

@@ -127,7 +127,7 @@ class CommonDpkgGraphTestsMixin(object):
         # Tests the assumption that if a node is in its recursive incoming
         # nodes set that it also has to be in its recursive outgoing nodes set.
         # A node is in both sets if it is part of a cycle.
-        for node in self.graph.nodes.values():
+        for node in self.graph.nodes:
             i = node in node.incoming_nodes_recursive
             o = node in node.outgoing_nodes_recursive
             self.assertEquals(i, o)
@@ -157,7 +157,7 @@ class CommonDpkgGraphTestsMixin(object):
         graph_cl = graph._mark_deleted_outgoing_cache_level  # noqa  # pylint: disable=protected-access
 
         # By default no node has a cache and the cache type is always dynamic.
-        for node in graph.nodes.values():
+        for node in graph.nodes:
             cr, ct = node._outgoing_nodes_recursive_get_cache(  # noqa  # pylint: disable=protected-access
                 graph_cl=graph_cl)
             self.assertEquals(cr, None)
@@ -165,7 +165,7 @@ class CommonDpkgGraphTestsMixin(object):
 
         # Generate outgoing nodes recursive caches for all nodes and check
         # the cache type.
-        for node in graph.nodes.values():
+        for node in graph.nodes:
             node.outgoing_nodes_recursive  # noqa  # pylint: disable=pointless-statement
             cr, ct = node._outgoing_nodes_recursive_get_cache(  # noqa  # pylint: disable=protected-access
                 graph_cl=graph_cl)
