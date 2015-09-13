@@ -996,15 +996,15 @@ class TestGraph(tests.common.PurgatoryTestCase):
 
         # The graph consists of 3 layers.
         g.unmark_deleted()
-        self.assertSetEqual(g.leaf_nodes_flat, set((n1, n2)))  # Layer 1
+        self.assertSetEqual(g.leafs_flat, set((n1, n2)))  # Layer 1
         n1.mark_deleted()
         n2.mark_deleted()
-        self.assertSetEqual(g.leaf_nodes_flat, set((n3,)))     # Layer 2
+        self.assertSetEqual(g.leafs_flat, set((n3,)))     # Layer 2
         n3.mark_deleted()
-        self.assertSetEqual(g.leaf_nodes_flat, set((n4, n5)))  # Layer 3
+        self.assertSetEqual(g.leafs_flat, set((n4, n5)))  # Layer 3
         n4.mark_deleted()
         n5.mark_deleted()
-        self.assertSetEqual(g.leaf_nodes_flat, set())  # Nothing left
+        self.assertSetEqual(g.leafs_flat, set())  # Nothing left
 
     def test_outgoing_nodes_recursive_get_cache(self):
         #              /--e2(p=0.33)--> n3 --e5-->\
@@ -1519,14 +1519,14 @@ class TestGraph(tests.common.PurgatoryTestCase):
 
         # The graph consists of 3 layers.
         g.unmark_deleted()
-        self.assertSetEqual(g.leaf_nodes_flat, set((n1,)))  # Layer 1
+        self.assertSetEqual(g.leafs_flat, set((n1,)))  # Layer 1
         n1.mark_deleted()
-        self.assertSetEqual(g.leaf_nodes_flat, set((n2, n3)))  # Layer 2
+        self.assertSetEqual(g.leafs_flat, set((n2, n3)))  # Layer 2
         n2.mark_deleted()
         n3.mark_deleted()
-        self.assertSetEqual(g.leaf_nodes_flat, set((n4,)))  # Layer 3
+        self.assertSetEqual(g.leafs_flat, set((n4,)))  # Layer 3
         n4.mark_deleted()
-        self.assertSetEqual(g.leaf_nodes_flat, set())  # Nothing left
+        self.assertSetEqual(g.leafs_flat, set())  # Nothing left
 
     def test_simple_self_cycle(self):
         n = Node()
@@ -1572,9 +1572,9 @@ class TestGraph(tests.common.PurgatoryTestCase):
 
         # The graph consists of 1 layer.
         g.unmark_deleted()
-        self.assertSetEqual(g.leaf_nodes_flat, set((n1, n2)))
+        self.assertSetEqual(g.leafs_flat, set((n1, n2)))
         n1.mark_deleted()
-        self.assertSetEqual(g.leaf_nodes_flat, set())  # Nothing left
+        self.assertSetEqual(g.leafs_flat, set())  # Nothing left
 
     def test_two_cycles(self):
         # n1 --e1--> n2 --e2--> n3 <--e4-- n4 <--e5-- n5
@@ -1619,9 +1619,9 @@ class TestGraph(tests.common.PurgatoryTestCase):
 
         # The graph consists of 1 layer.
         g.unmark_deleted()
-        self.assertSetEqual(g.leaf_nodes_flat, set((n1, n2, n3, n4, n5)))
+        self.assertSetEqual(g.leafs_flat, set((n1, n2, n3, n4, n5)))
         n1.mark_deleted()
-        self.assertSetEqual(g.leaf_nodes_flat, set())  # Nothing left
+        self.assertSetEqual(g.leafs_flat, set())  # Nothing left
 
     def test_break_cycle(self):
         # n1 ------e1------> n2 --e2(p=0.5)--> n3
@@ -1657,15 +1657,15 @@ class TestGraph(tests.common.PurgatoryTestCase):
 
         # The graph consists of 3 layers.
         g.unmark_deleted()
-        self.assertSetEqual(g.leaf_nodes_flat, set((n1, n2)))  # Layer 1
+        self.assertSetEqual(g.leafs_flat, set((n1, n2)))  # Layer 1
         n1.mark_deleted()  # Breaks cycle; doesn't mark n2 as deleted
         self.assertTrue(n1.deleted)
         self.assertFalse(n2.deleted)
-        self.assertSetEqual(g.leaf_nodes_flat, set((n2,)))  # Layer 2
+        self.assertSetEqual(g.leafs_flat, set((n2,)))  # Layer 2
         n2.mark_deleted()
-        self.assertSetEqual(g.leaf_nodes_flat, set((n3,)))  # Layer 3
+        self.assertSetEqual(g.leafs_flat, set((n3,)))  # Layer 3
         n3.mark_deleted()
-        self.assertSetEqual(g.leaf_nodes_flat, set())  # Nothing left
+        self.assertSetEqual(g.leafs_flat, set())  # Nothing left
 
     def test_two_disconnected_cycles(self):
         # n1 --e1--> n2 -> e3 -> n3 --e4--> n4
@@ -1718,27 +1718,27 @@ class TestGraph(tests.common.PurgatoryTestCase):
 
         # The graph consists of 2 layers.
         g.unmark_deleted()
-        self.assertSetEqual(g.leaf_nodes_flat, set((n1, n2)))  # Layer 1
+        self.assertSetEqual(g.leafs_flat, set((n1, n2)))  # Layer 1
         n1.mark_deleted()
         self.assertTrue(n2.deleted)
-        self.assertSetEqual(g.leaf_nodes_flat, set((n3, n4)))  # Layer 2
+        self.assertSetEqual(g.leafs_flat, set((n3, n4)))  # Layer 2
         n3.mark_deleted()
         self.assertTrue(n4.deleted)
-        self.assertSetEqual(g.leaf_nodes_flat, set())  # Nothing left
+        self.assertSetEqual(g.leafs_flat, set())  # Nothing left
 
-        # Check leaf_nodes (non flat)
+        # Check leafs (non flat)
         g.unmark_deleted()
-        leafs = set(g.leaf_nodes)
+        leafs = set(g.leafs)
         self.assertEquals(len(leafs), 1)
         leaf = leafs.pop()
         self.assertSetEqual(leaf, set((n1, n2)))  # Layer 1
         n1.mark_deleted()
-        leafs = set(g.leaf_nodes)
+        leafs = set(g.leafs)
         self.assertEquals(len(leafs), 1)
         leaf = leafs.pop()
         self.assertSetEqual(leaf, set((n3, n4)))  # Layer 2
         n3.mark_deleted()
-        leafs = set(g.leaf_nodes)
+        leafs = set(g.leafs)
         self.assertEquals(len(leafs), 0)  # Nothing left
 
     def test_graph_mark_members_including_obsolete_deleted_docstring(self):
@@ -1993,17 +1993,17 @@ class TestGraph(tests.common.PurgatoryTestCase):
         self.assertSetEqual(n1.incoming_nodes_recursive, set())
 
         # The graph consists of 3 layers.
-        self.assertSetEqual(g.leaf_nodes_flat, set((n1, n2)))  # Layer 1
+        self.assertSetEqual(g.leafs_flat, set((n1, n2)))  # Layer 1
         g.mark_members_deleted(set((n1, n2)))
-        self.assertSetEqual(g.leaf_nodes_flat, set((n3, n4)))  # Layer 2
+        self.assertSetEqual(g.leafs_flat, set((n3, n4)))  # Layer 2
         # If n3 would be marked deleted only the cycle would be broken without
         # marking n4 as deleted.  This isn't true the other way around and
         # hence n4 is marked as deleted as this also marks n3 as deleted.
         n4.mark_deleted()
         self.assertTrue(n3.deleted)
-        self.assertSetEqual(g.leaf_nodes_flat, set((n5,)))  # Layer 3
+        self.assertSetEqual(g.leafs_flat, set((n5,)))  # Layer 3
         n5.mark_deleted()
-        self.assertSetEqual(g.leaf_nodes_flat, set())  # Nothing left
+        self.assertSetEqual(g.leafs_flat, set())  # Nothing left
 
         # Just test what happens if e6 gets marked deleted as that breaks the
         # cycle between n3 and n4.
@@ -2063,13 +2063,13 @@ class TestGraph(tests.common.PurgatoryTestCase):
         self.assertSetEqual(n1.incoming_nodes_recursive, set())
 
         # The graph consists of 3 layers.
-        self.assertSetEqual(g.leaf_nodes_flat, set((n1, n2)))  # Layer 1
+        self.assertSetEqual(g.leafs_flat, set((n1, n2)))  # Layer 1
         g.mark_members_deleted(set((n1, n2)))
-        self.assertSetEqual(g.leaf_nodes_flat, set((n4,)))  # Layer 2
+        self.assertSetEqual(g.leafs_flat, set((n4,)))  # Layer 2
         n4.mark_deleted()
-        self.assertSetEqual(g.leaf_nodes_flat, set((n5,)))  # Layer 3
+        self.assertSetEqual(g.leafs_flat, set((n5,)))  # Layer 3
         n5.mark_deleted()
-        self.assertSetEqual(g.leaf_nodes_flat, set())  # Nothing left
+        self.assertSetEqual(g.leafs_flat, set())  # Nothing left
 
         g.unmark_deleted()
         # n1 --e1-------------------------- n5
@@ -2127,17 +2127,17 @@ class TestGraph(tests.common.PurgatoryTestCase):
         self.assertSetEqual(n1.incoming_nodes_recursive, set())
 
         # The graph consists of 3 layers.
-        self.assertSetEqual(g.leaf_nodes_flat, set((n1, n2)))  # Layer 1
+        self.assertSetEqual(g.leafs_flat, set((n1, n2)))  # Layer 1
         g.mark_members_deleted(set((n1, n2)))
-        self.assertSetEqual(g.leaf_nodes_flat, set((n3, n4)))  # Layer 2
+        self.assertSetEqual(g.leafs_flat, set((n3, n4)))  # Layer 2
         # If n3 would be marked deleted only the cycle would be broken without
         # marking n4 as deleted.  This isn't true the other way around and
         # hence n4 is marked as deleted as this also marks n3 as deleted.
         n4.mark_deleted()
         self.assertTrue(n3.deleted)
-        self.assertSetEqual(g.leaf_nodes_flat, set((n5,)))  # Layer 3
+        self.assertSetEqual(g.leafs_flat, set((n5,)))  # Layer 3
         n5.mark_deleted()
-        self.assertSetEqual(g.leaf_nodes_flat, set())  # Nothing left
+        self.assertSetEqual(g.leafs_flat, set())  # Nothing left
 
         # Just test what happens if e6 gets marked deleted as that breaks the
         # cycle between n3 and n4.
@@ -2197,13 +2197,13 @@ class TestGraph(tests.common.PurgatoryTestCase):
         self.assertSetEqual(n1.incoming_nodes_recursive, set())
 
         # The graph consists of 3 layers.
-        self.assertSetEqual(g.leaf_nodes_flat, set((n1, n2)))  # Layer 1
+        self.assertSetEqual(g.leafs_flat, set((n1, n2)))  # Layer 1
         g.mark_members_deleted(set((n1, n2)))
-        self.assertSetEqual(g.leaf_nodes_flat, set((n4,)))  # Layer 2
+        self.assertSetEqual(g.leafs_flat, set((n4,)))  # Layer 2
         n4.mark_deleted()
-        self.assertSetEqual(g.leaf_nodes_flat, set((n5,)))  # Layer 3
+        self.assertSetEqual(g.leafs_flat, set((n5,)))  # Layer 3
         n5.mark_deleted()
-        self.assertSetEqual(g.leaf_nodes_flat, set())  # Nothing left
+        self.assertSetEqual(g.leafs_flat, set())  # Nothing left
 
         g.unmark_deleted()
         # n1 --e1-------------------------- n5
@@ -2443,13 +2443,13 @@ class TestGraph(tests.common.PurgatoryTestCase):
         self.assertSetEqual(n1.incoming_nodes, set())
         self.assertSetEqual(n1.incoming_nodes_recursive, set())
 
-    def test_leaf_nodes(self):
+    def test_leafs(self):
         # Tests all code paths of the leaf nodes method.  This is tricky as the
         # nodes in the graph will be put in a set and thus coverage results
         # will be random.  Because of this all tests will be run 100 times to
         # make it more likely that this test reaches full coverage.
 
-        # Test stage 1 of leaf_nodes:
+        # Test stage 1 of leafs:
         # n1 --e1--> n2
         nodes = [None, None]
         edges = [None]
@@ -2474,13 +2474,13 @@ class TestGraph(tests.common.PurgatoryTestCase):
 
             g = Graph(init_nodes_and_edges1)
 
-            self.assertSetEqual(g.leaf_nodes_flat, set((n1,)))  # Layer 1
+            self.assertSetEqual(g.leafs_flat, set((n1,)))  # Layer 1
             n1.mark_deleted()
-            self.assertSetEqual(g.leaf_nodes_flat, set((n2,)))  # Layer 2
+            self.assertSetEqual(g.leafs_flat, set((n2,)))  # Layer 2
             n2.mark_deleted()
-            self.assertSetEqual(g.leaf_nodes_flat, set())  # Nothing left
+            self.assertSetEqual(g.leafs_flat, set())  # Nothing left
 
-        # Test stage 2 of leaf_nodes:
+        # Test stage 2 of leafs:
         #   /<-----\
         # n1 --e1--/
         #   \--e2--> n2
@@ -2510,8 +2510,8 @@ class TestGraph(tests.common.PurgatoryTestCase):
 
             g = Graph(init_nodes_and_edges2)
 
-            self.assertSetEqual(g.leaf_nodes_flat, set((n1,)))  # Layer 1
+            self.assertSetEqual(g.leafs_flat, set((n1,)))  # Layer 1
             n1.mark_deleted()
-            self.assertSetEqual(g.leaf_nodes_flat, set((n2,)))  # Layer 2
+            self.assertSetEqual(g.leafs_flat, set((n2,)))  # Layer 2
             n2.mark_deleted()
-            self.assertSetEqual(g.leaf_nodes_flat, set())  # Nothing left
+            self.assertSetEqual(g.leafs_flat, set())  # Nothing left

@@ -56,12 +56,12 @@ class TestSystemDpkgGraph(tests.common.PurgatoryTestCase):
 
     @unittest.skip
     @tests.common.cprofile
-    def test_profile_leaf_nodes(self):
+    def test_profile_leafs(self):
         # Determines all layers of the graph by the help of the
-        # Graph.leaf_nodes_flat property and Node.mark_deleted() method.
+        # Graph.leafs_flat property and Node.mark_deleted() method.
         # This test ensures that all graphs can be dissected into layers by
         # this method.  If this isn't the case within the layer_index limit
-        # then something is wrong with the Graph.leaf_nodes property.
+        # then something is wrong with the Graph.leafs property.
         graph = self.graph
         layer = None
         layer_index = -1
@@ -70,7 +70,7 @@ class TestSystemDpkgGraph(tests.common.PurgatoryTestCase):
             layer_index += 1
             self.assertLess(layer_index, 200)
 
-            layer = graph.leaf_nodes_flat
+            layer = graph.leafs_flat
             for node in layer:
                 node.mark_deleted()
 
@@ -82,7 +82,7 @@ class TestSystemDpkgGraph(tests.common.PurgatoryTestCase):
         # For each leaf calculate the nodes that would be marked removed if
         # the leaf would be removed including the obsolete nodes.  This is the
         # typical workload in case Purgatory shows the leaf nodes and details.
-        for leaf in graph.leaf_nodes:
+        for leaf in graph.leafs:
             graph.mark_members_including_obsolete_deleted(leaf)
             graph.deleted_nodes  # To gather details about the deleted nodes.  # noqa  # pylint: disable=pointless-statement
             graph.unmark_deleted()  # Reset graph.

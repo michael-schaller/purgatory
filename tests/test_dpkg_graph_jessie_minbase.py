@@ -57,7 +57,7 @@ class TestJessieDpkgGraph(
 
     def test_jesse_layer_count(self):
         # Determines all layers of the graph by the help of the
-        # Graph.leaf_nodes_flat property and Node.mark_deleted() method.
+        # Graph.leafs_flat property and Node.mark_deleted() method.
         graph = self.graph
         layer = None
         layer_counts = []
@@ -67,7 +67,7 @@ class TestJessieDpkgGraph(
             layer_index += 1
             self.assertLess(layer_index, 200)
 
-            layer = graph.leaf_nodes_flat
+            layer = graph.leafs_flat
             if layer:
                 layer_counts.append(len(layer))
             for node in layer:
@@ -86,7 +86,7 @@ class TestJessieDpkgGraph(
 
         # For each leaf calculate the nodes that would be marked removed if
         # the leaf would be removed including the obsolete nodes.
-        leafs = graph.leaf_nodes
+        leafs = graph.leafs
         for leaf in leafs:
             # Determine the InstalledPackageNodes that have been marked as
             # deleted.

@@ -28,7 +28,7 @@ can't exist anymore without their foundation.  The only exception to this rule
 is made if the hierarchie isn't violated due to edges in an or-relationship.
 
 Cycles in the Graph are always treated as an undividable cluster of nodes.
-For an instance Graph.leaf_nodes returns the leaf nodes and the nodes within
+For an instance Graph.leafs returns the leaf nodes and the nodes within
 leaf cycles.  Marking a cycle as deleted will also mark all nodes and edges of
 the cycle as deleted as long as there is no alternative (parallel OrEdge).
 
@@ -235,7 +235,7 @@ class Graph(abc.ABC):
         return self._edges_set - self._deleted_edges
 
     @property
-    def leaf_nodes(self):
+    def leafs(self):
         """Returns the leaf nodes of the graph.
 
         The graph can contain leaf nodes and leaf cycles.  Leaf nodes are nodes
@@ -306,14 +306,14 @@ class Graph(abc.ABC):
         return frozenset(leafs)
 
     @property
-    def leaf_nodes_flat(self):
+    def leafs_flat(self):
         """Returns the leaf nodes of the graph in a flattened set.
 
-        This property behaves the same as the leaf_nodes property with the only
+        This property behaves the same as the leafs property with the only
         difference that the return value is a flattened set that only contains
         nodes that are either leaf nodes or belong to a leaf cycle.
         """
-        leafs = self.leaf_nodes
+        leafs = self.leafs
         return {node for leaf in leafs for node in leaf}
 
     def mark_members_deleted(self, members):
