@@ -1,597 +1,16 @@
-"""A hierarchical Graph with nodes and directed edges that have probabilities.
-
-The Graph implementation in this module is designed for hierarchical Graphs.
-The Graph can have cycles and can be disconnected.  The hierarchy is modeled
-after a wodden tree with relatively many leaf nodes on the top and relatively
-few leaf nodes on the bottom.
-
-A hierarchical Graph consists of Nodes and directed Edges that have
-probabilities.  An edge of type Edge has always the probability 1.0 and
-represents a mandatory edge.  Furthermore edges can also be in an
-or-relationship if they are of type OrEdge.  Any of the edges in an
-or-relationship satisfy the hierarchie but it is not important which one.
-Edges of type OrEdge have a probability depending on how many edges are in the
-or-relationship.  For more details see the docstring of the OrEdge type.
-
-A Graph's set of Nodes and Edges can't be changed after initialization.
-However Nodes and Edges can be marked as deleted.  Every Graph member that is
-marked as deleted will be ignored by algorithms but be warned that some
-algorithms reset the deleted markers.  Whenever the deleted markers are changed
-there will be a note in the respective docstring.
-
-As a Graph is hierarchical the mark_deleted methods on Nodes and Edges behave
-differently than with classical/generic Graph implementations.  Marking a Node
-as deleted also marks its incoming and outgoing edges as deleted as edges can't
-exist without their nodes existing.  Marking an Edge as deleted typically marks
-everything above the from-node of the Edge as deleted as the Nodes and Edges
-can't exist anymore without their foundation.  The only exception to this rule
-is made if the hierarchie isn't violated due to edges in an or-relationship.
-
-Cycles in the Graph are always treated as an undividable cluster of nodes.
-For an instance Graph.leafs returns the leaf nodes and the nodes within
-leaf cycles.  Marking a cycle as deleted will also mark all nodes and edges of
-the cycle as deleted as long as there is no alternative (parallel OrEdge).
-
-The classes in this module are very thightly tied together and protected access
-between classes in this module is generally allowed and partly necessary to
-speed up extremely hot code paths.  If this code would be written in C++ these
-classes would be in a 'friend' relationship.
-"""
+"""Abstract Node base class."""
 
 
-import abc
 import collections
-import types
 
-import purgatory.error
+from . import error
+from . import member
 
 
-EPSILON = 0.00001
-EMPTY_FROZEN_SET = frozenset()
-
-
-class GraphError(purgatory.error.PurgatoryError):
-    """Base class for all graph related errors."""
-
-
-class NotANodeError(GraphError):
-    """Raised if a node was expected but something else was given."""
-
-    def __init__(self, something):
-        msg = "Expected an instance of class 'Node' but got class '%s'!" % (
-            something.__class__)
-        super().__init__(msg)
-
-
-class NotAnEdgeError(GraphError):
-    """Raised if an edge was expected but something else was given."""
-
-    def __init__(self, something):
-        msg = "Expected an instance of class 'Edge' but got class '%s'!" % (
-            something.__class__)
-        super().__init__(msg)
-
-
-class NotAnOrEdgeError(GraphError):
-    """Raised if an or-edge was expected but something else was given."""
-
-    def __init__(self, something):
-        msg = "Expected an instance of class 'OrEdge' but got class '%s'!" % (
-            something.__class__)
-        super().__init__(msg)
-
-
-class NotMemberOfGraphError(GraphError):
-    """Raised if a member in use doesn't belong to this graph."""
-
-    def __init__(self, member):
-        msg = "Member '%s' with uid '%s' doesn't belong to this graph!" % (
-            member.__class__, member.uid)
-        super().__init__(msg)
-
-
-class MemberAlreadyRegisteredError(GraphError):
-    """Raised if a member has been already registered in the graph."""
-
-    def __init__(self, member):
-        msg = "Member '%s' with uid '%s' has been already registered!" % (
-            member.__class__, member.uid)
-        super().__init__(msg)
-
-
-class UnregisteredMemberInUseError(GraphError):
-    """Raised if an unregistered member is in use."""
-
-    def __init__(self, member):
-        msg = "Unregistered member '%s' with uid '%s' is in use!" % (
-            member.__class__, member.uid)
-        super().__init__(msg)
-
-
-class DeletedMemberInUseError(GraphError):
-    """Raised if a deleted member is in use."""
-
-    def __init__(self, member):
-        msg = "Deleted member '%s' with uid '%s' is in use!" % (
-            member.__class__, member.uid)
-        super().__init__(msg)
-
-
-class NodeIsNotPartOfEdgeError(GraphError):
-    """Raised if a node isn't part of an edge but should be."""
-    def __init__(self, node, edge):
-        msg = "Node '%s' isn't part of edge '%s' but should be!" % (
-            node, edge)
-        super().__init__(msg)
-
-
-class EdgeWithZeroProbabilityError(GraphError):
-    """Raised if an edge has the probability of 0.0."""
-
-    def __init__(self, edge):
-        msg = ("The edge '%s' has a probability of 0.0 and isn't of any use "
-               "to the Graph!") % (edge)
-        super().__init__(msg)
-
-
-class Graph(abc.ABC):
-    """Abstract Graph base class with nodes and directed edges.
-
-    All Nodes and Edges of the Graph are derived from the respective abstract
-    base classes in this module.
-    """
-
-    def __init__(self):
-        """Graph constructor."""
-        # Protected
-        self._nodes = {}  # uid:node
-        self._edges = {}  # uid:edge
-        self._nodes_set = None
-        self._edges_set = None
-        self._deleted_nodes = set()
-        self._deleted_edges = set()
-        self._mark_deleted_incoming_cache_level = 0
-        self._mark_deleted_outgoing_cache_level = 0
-
-        # Init and check
-        super().__init__()
-        self._init_nodes_and_edges()
-        for edge in self._edges.values():
-            if abs(edge.probability - 0.0) < EPSILON:
-                raise EdgeWithZeroProbabilityError(edge)
-
-        # Freeze
-        self._nodes = types.MappingProxyType(self._nodes)
-        self._edges = types.MappingProxyType(self._edges)
-        self._nodes_set = frozenset(self._nodes.values())
-        self._edges_set = frozenset(self._edges.values())
-        self.__freeze_nodes_incoming_and_outgoing_edges_and_nodes()
-
-    @abc.abstractmethod
-    def _init_nodes_and_edges(self):
-        """Initializes the nodes of the graph."""
-
-    def __freeze_nodes_incoming_and_outgoing_edges_and_nodes(self):
-        """Freezes the incoming and outgoing edges and node sets."""
-        for node in self._nodes.values():
-            node._freeze_incoming_edges_and_nodes()  # noqa  # pylint: disable=protected-access
-            node._freeze_outgoing_edges_and_nodes()  # noqa  # pylint: disable=protected-access
-
-    def _add_edge(self, edge):
-        """Adds an edge to the self._edges dict."""
-        if not edge.is_edge_instance:
-            raise NotAnEdgeError(edge)
-        if edge.uid in self._edges:
-            raise MemberAlreadyRegisteredError(edge)
-        edge.graph = self
-        self._edges[edge.uid] = edge
-
-    def _add_node(self, node):
-        """Adds a node to the self._nodes dict."""
-        if not node.is_node_instance:
-            raise NotANodeError(node)
-        if node.uid in self._nodes:
-            raise MemberAlreadyRegisteredError(node)
-        node.graph = self
-        self._nodes[node.uid] = node
-
-    def _add_node_dedup(self, node):
-        """Add the given node to the self._nodes dict if it isn't tracked yet.
-
-        This method checks if the given node is already in the self._nodes
-        dict.  If it is the existing node is returned (dedup).  If it isn't
-        the given node is added and returned (no-dup).
-
-        Returns:
-          Tupel of the node in the self._nodes dict and a boolean if the
-          given node was a duplicate.
-        """
-        dict_node = self._nodes.get(node.uid)
-        if dict_node:
-            return (dict_node, True)  # Deduplicate
-        else:
-            self._add_node(node)
-            return (node, False)  # Not a duplicate
-
-    @property
-    def deleted_edges(self):
-        """Returns a set of the edges in the graph marked as deleted."""
-        return frozenset(self._deleted_edges)
-
-    @property
-    def deleted_nodes(self):
-        """Returns a set of the nodes in the graph marked as deleted."""
-        return frozenset(self._deleted_nodes)
-
-    @property
-    def edges(self):
-        """Returns a set of the edges in the graph.
-
-        This set doesn't include the edges that have been marked as deleted.
-
-        Returns:
-            Set of edges in the graph.
-        """
-        return self._edges_set - self._deleted_edges
-
-    @property
-    def leafs(self):
-        """Returns the leaf nodes of the graph.
-
-        The graph can contain leaf nodes and leaf cycles.  Leaf nodes are nodes
-        without incoming edges.  Leaf cycles are nodes in a cycle without
-        incoming edges other the ones needed to form the cycle.
-
-        The return value is a set of set of nodes.  The inner sets contain a
-        single node for leaf nodes or multiple nodes in case of a leaf cycle.
-        The outer set contains all inner sets.
-        """
-        stage1_nodes_to_visit = set(self._nodes.values())
-        stage2_nodes_to_visit = set()
-        stage3_nodes_to_visit = set()
-        leafs = set()  # Return value
-
-        # Stage 1 - Identify single leaf nodes.
-        # A leaf node is a node that has no incoming edges.  As a leaf node has
-        # no incoming edges it also can't be in a cycle.
-        while stage1_nodes_to_visit:
-            node = stage1_nodes_to_visit.pop()
-            if node.deleted:
-                continue
-
-            if node.incoming_edges:
-                # Node isn't a leaf node but it could potentially be part of a
-                # leaf cycle - hence it will be revisited in stage 2.
-                stage2_nodes_to_visit.add(node)
-            else:
-                # Node is a leaf node.
-                leafs.add(frozenset((node,)))
-
-                # Remove all nodes below this leaf node as these can't be leaf
-                # nodes/cycles and hence don't need to be visited in stage 1 or
-                # stage 2.
-                onrs = node.outgoing_nodes_recursive
-                stage1_nodes_to_visit -= onrs
-                stage2_nodes_to_visit -= onrs
-
-        # Stage 2 - Determine if a node could potentially be a leaf cycle.
-        while stage2_nodes_to_visit:
-            node = stage2_nodes_to_visit.pop()
-
-            onrs = node.outgoing_nodes_recursive
-            if node.in_cycle:
-                # Node is in a cycle.  Don't visit any further nodes of this
-                # cycle or nodes below this cycle in stage 2.
-                stage2_nodes_to_visit -= onrs
-
-                # Remove all nodes below this cycle as these can't be leaf
-                # nodes/cycles and thus don't need to be visited in stage 3.
-                # Also don't visit any further nodes of this cycle as one node
-                # of the cycle is enough to track the whole cycle.
-                stage3_nodes_to_visit -= onrs
-                stage3_nodes_to_visit |= set((node,))
-            else:
-                # Node isn't in a cycle and isn't a leaf node.  This node and
-                # all nodes below it can't be leaf nodes/cycles and hence don't
-                # need to be visited in stage 2 or 3.
-                stage2_nodes_to_visit -= onrs
-                stage3_nodes_to_visit -= onrs
-
-        # Stage 3 - Determine leaf cycles.
-        # All the nodes that are left are part of leaf cycles.  All that's left
-        # to do is to add the cycle_nodes sets to the leafs set.
-        for node in stage3_nodes_to_visit:
-            leafs |= set((node.cycle_nodes,))
-
-        return frozenset(leafs)
-
-    @property
-    def leafs_flat(self):
-        """Returns the leaf nodes of the graph in a flattened set.
-
-        This property behaves the same as the leafs property with the only
-        difference that the return value is a flattened set that only contains
-        nodes that are either leaf nodes or belong to a leaf cycle.
-        """
-        leafs = self.leafs
-        return {node for leaf in leafs for node in leaf}
-
-    def mark_members_deleted(self, members):
-        """Marks the given graph members as deleted."""
-        for m in members:
-            if m.graph != self:
-                raise NotMemberOfGraphError(m)
-            m.mark_deleted()
-
-    def mark_members_including_obsolete_deleted(self, members):
-        """Marks the given graph members and obsoleted members as deleted.
-
-        This method marks the given graph members and the obsoleted members by
-        the mark deleted operation of the given members recursively as deleted.
-        A node is considered obsolete if it had only incoming edges from the
-        nodes so far marked as deleted.  Furthermore cycles are counted as a
-        single graph member and hence whole cycles can be obsolete as well.
-
-        Example:
-        n1 --\
-        n2 --> n4 --\
-        n3 ---------> n5
-
-        If n1 and n2 in the example will be marked as deleted then n4 is marked
-        as deleted as well as n4 was only there as foundation for n1 and n2 but
-        it is obsolete as these have been marked as deleted - hence n4 is
-        marked as deleted as well.  n5 isn't marked as deleted as it is still
-        needed as foundation for n3.
-        """
-        # Ensure that all members are part of this graph.
-        for m in members:
-            if m.graph != self:
-                raise NotMemberOfGraphError(m)
-
-        to_process = set(members)
-        all_deleted = None  # All nodes marked as deleted.
-        prev_deleted = self.deleted_nodes  # Previously marked as deleted.
-        while to_process:
-            # Mark all the members to process as deleted.  This doesn't use
-            # Graph.mark_members_deleted as it would needlessly check if the
-            # members are members of this Graph.
-            for member in to_process:
-                member.mark_deleted()
-
-            # Determine the nodes that have been marked as deleted in this
-            # round.  The number of nodes marked as deleted can differ from the
-            # number of nodes in the to_process set.
-            all_deleted = self.deleted_nodes
-            round_deleted = all_deleted - prev_deleted
-            prev_deleted = all_deleted
-
-            # Determine all outgoing nodes that are below the nodes that have
-            # been marked as deleted.  The read only set node._outgoing_nodes
-            # is used as the node.outgoing_nodes property can't be used on
-            # nodes that have been marked as deleted.
-            outgoing_nodes = set()
-            for node in round_deleted:
-                outgoing_nodes |= node._outgoing_nodes  # noqa  # pylint: disable=protected-access
-
-            # Determine new set of nodes to process which also need to be
-            # marked as deleted.  For this each outgoing node's incoming nodes
-            # will be checked and if the node was only needed by nodes that
-            # have been marked as deleted (processed) then it is obsolete and
-            # will be processed (marked as deleted) in the next round.
-            to_process = set()
-            while outgoing_nodes:
-                node = outgoing_nodes.pop()
-                if node._deleted:  # pylint: disable=protected-access
-                    continue  # Already processed. Continue with next node.
-                if node.in_cycle:
-                    # Node is part of a cycle.  Process the whole cycle as a
-                    # single member.
-                    cycle_nodes = node.cycle_nodes
-                    outgoing_nodes -= cycle_nodes
-                    incoming_nodes = node.incoming_cycle_nodes
-                    if incoming_nodes - all_deleted:
-                        # Cycle is still needed and hence not obsolete.
-                        continue
-
-                    # Cycle was only needed by nodes that have been already
-                    # marked as deleted and hence it is obsolete.
-                    to_process |= cycle_nodes
-
-                else:
-                    # Single node.
-                    if node._incoming_nodes - all_deleted:  # noqa  # pylint: disable=protected-access
-                        # Node is still needed and hence not obsolete.
-                        continue
-
-                    # Node was only needed by nodes that have been already
-                    # marked as deleted and hence it is obsolete.
-                    to_process |= set((node,))
-
-    @property
-    def nodes(self):
-        """Returns a set of the nodes in the graph.
-
-        This set doesn't include the nodes that have been marked as deleted.
-
-        Returns:
-            Set of edges in the graph.
-        """
-        return self._nodes_set - self._deleted_nodes
-
-    def unmark_deleted(self):
-        """Unmarks all graph members as deleted."""
-        # Signal the incoming and outgoing nodes recursive properties that
-        # the cached result might be invalid and needs to be rechecked.
-        self._mark_deleted_incoming_cache_level += 1
-        graph_in_cl = self._mark_deleted_incoming_cache_level
-        self._mark_deleted_outgoing_cache_level += 1
-        graph_out_cl = self._mark_deleted_outgoing_cache_level
-
-        # Unmark the as deleted marked nodes and reset the deleted nodes set.
-        for node in self._deleted_nodes:
-            node._deleted = False  # pylint: disable=protected-access
-        self._deleted_nodes = set()
-
-        # Unmark the as deleted marked edges and reset the deleted edges set.
-        for edge in self._deleted_edges:
-            edge._deleted = False  # pylint: disable=protected-access
-            from_node = edge.from_node
-            to_node = edge.to_node
-
-            # If the incoming edges and nodes of the destination node have been
-            # touched reset them and mark the incoming nodes recursive cache as
-            # invalid as it could be invalid.
-            # The _incoming_nodes_recursive_get_cache method checks then if the
-            # cached result is actually invalid.
-            if to_node._incoming_without_deleted_touched:  # noqa  # pylint: disable=protected-access
-                to_node._incoming_without_deleted_touched = False  # noqa  # pylint: disable=protected-access
-                to_node._incoming_edges_without_deleted = None  # noqa  # pylint: disable=protected-access
-                to_node._incoming_nodes_without_deleted = None  # noqa  # pylint: disable=protected-access
-                to_node._incoming_nodes_recursive_invalidated_at_cl = graph_in_cl  # noqa  # pylint: disable=protected-access,line-too-long
-
-            # If the outgoing edges and nodes of the source node have been
-            # touched reset them and mark the outgoing nodes recursive cache as
-            # invalid as it could be invalid.
-            # The _outgoing_nodes_recursive_get_cache method checks then if the
-            # cached result is actually invalid.
-            if from_node._outgoing_without_deleted_touched:  # noqa  # pylint: disable=protected-access
-                from_node._outgoing_without_deleted_touched = False  # noqa  # pylint: disable=protected-access
-                from_node._outgoing_edges_without_deleted = None  # noqa  # pylint: disable=protected-access
-                from_node._outgoing_nodes_without_deleted = None  # noqa  # pylint: disable=protected-access
-                from_node._outgoing_nodes_recursive_invalidated_at_cl = graph_out_cl  # noqa  # pylint: disable=protected-access,line-too-long
-        self._deleted_edges = set()
-
-
-class Member(abc.ABC):
-    """Abstract base class for members (nodes, edges) of a Graph."""
-
-    __uid_counter = 0
-    __uid_to_uid_intid = {}  # uid:uid_intid
-
-    def __init__(self, uid):
-        # Get unique integer id based on the uid
-        uid_intid = Member.__uid_to_uid_intid.get(uid)
-        if uid_intid is None:
-            uid_intid = Member.__uid_counter
-            Member.__uid_to_uid_intid[uid] = uid_intid
-            Member.__uid_counter += 1
-
-        # Protected
-        self._uid = uid
-        self._uid_intid = uid_intid
-        self._hash = hash(uid)
-        self._str = None
-        self._deleted = False
-        self._graph = None
-
-        # Init
-        super().__init__()
-        self._init_str()
-
-    def __eq__(self, other):
-        """Equals magic method with extreme speed optimizations.
-
-        This method is in an extreme hot code path and thus has been profiled
-        and optimized heavily.  As comparing the uid or hashes takes too long
-        """
-        try:
-            other_uid_intid = other._uid_intid  # noqa  # pylint: disable=protected-access
-        except AttributeError:  # pragma: no cover
-            return False  # Not a Member class
-        return self._uid_intid == other_uid_intid  # Unique id for all Members.
-
-    def __ge__(self, other):
-        return self._uid >= other.uid
-
-    def __gt__(self, other):
-        return self._uid > other.uid
-
-    def __hash__(self):
-        return self._hash
-
-    def __le__(self, other):
-        return self._uid <= other.uid
-
-    def __lt__(self, other):
-        return self._uid < other.uid
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    def __str__(self):
-        return self._str
-
-    def __repr__(self):
-        return "%s(uid='%s')" % (self.__class__.__name__, self._uid)
-
-    @abc.abstractmethod
-    def _init_str(self):
-        """Initializes self._str for self.__str__."""
-
-    @property
-    def deleted(self):
-        """Returns True if this graph member has been marked as deleted."""
-        return self._deleted
-
-    @property
-    def is_node_instance(self):  # pylint: disable=no-self-use
-        """Returns True if this object is a Node instance.
-
-        Python's isinstance is slow.  To avoid its slowness the is_*_instance
-        properties will be used for the most important classes.
-        """
-        return False
-
-    @property
-    def is_edge_instance(self):  # pylint: disable=no-self-use
-        """Returns True if this object is an Edge instance.
-
-        Python's isinstance is slow.  To avoid its slowness the is_*_instance
-        properties will be used for the most important classes.
-        """
-        return False
-
-    @property
-    def is_oredge_instance(self):  # pylint: disable=no-self-use
-        """Returns True if this object is an OrEdge instance.
-
-        Python's isinstance is slow.  To avoid its slowness the is_*_instance
-        properties will be used for the most important classes.
-        """
-        return False
-
-    @property
-    def graph(self):
-        """Returns the graph to which this member belongs."""
-        if not self._graph:
-            raise UnregisteredMemberInUseError(self)
-        return self._graph
-
-    @graph.setter
-    def graph(self, graph):
-        """Sets the graph to which this member belongs.
-
-        The graph can only be set once.
-        """
-        if self._graph:
-            if self._graph == graph:
-                raise MemberAlreadyRegisteredError(self)
-            else:
-                raise NotMemberOfGraphError(self)
-        self._graph = graph
-
-    @property
-    def uid(self):
-        """Returns the uid of the graph member."""
-        return self._uid
-
-    @abc.abstractmethod
-    def mark_deleted(self):
-        """Marks the graph member as deleted."""
-
-
-class Node(Member):  # pylint: disable=abstract-method
+class Node(member.Member):  # pylint: disable=abstract-method
     """Abstract Node base class."""
+
+    __empty_frozen_set = frozenset()
 
     dynamic_result_type = collections.namedtuple("DynamicCacheResult", [])
     static_result_type = collections.namedtuple("StaticCacheResult", [])
@@ -639,9 +58,9 @@ class Node(Member):  # pylint: disable=abstract-method
         set of incoming edges on this node will be frozen.
         """
         if not edge.is_edge_instance:
-            raise NotAnEdgeError(edge)
+            raise error.NotAnEdgeError(edge)
         if edge.to_node != self:
-            raise NodeIsNotPartOfEdgeError(self, edge)
+            raise error.NodeIsNotPartOfEdgeError(self, edge)
         self._incoming_edges.add(edge)
         self._incoming_nodes.add(edge.from_node)
 
@@ -657,9 +76,9 @@ class Node(Member):  # pylint: disable=abstract-method
         """
         # Basic checks.
         if not edge.is_edge_instance:
-            raise NotAnEdgeError(edge)
+            raise error.NotAnEdgeError(edge)
         if edge.from_node != self:
-            raise NodeIsNotPartOfEdgeError(self, edge)
+            raise error.NodeIsNotPartOfEdgeError(self, edge)
 
         # Add edge while ensuring that all outgoing edges are either of type
         # Edge or of type OrEdge.
@@ -675,11 +94,11 @@ class Node(Member):  # pylint: disable=abstract-method
             if self._outgoing_or_edges:
                 # Edges in the outgoing edges set are of type OrEdge.
                 if not edge.is_oredge_instance:
-                    raise NotAnOrEdgeError(edge)
+                    raise error.NotAnOrEdgeError(edge)
             else:
                 # Edges in the outgoing edges set are of type Edge.
                 if edge.is_oredge_instance:
-                    raise NotAnEdgeError(edge)
+                    raise error.NotAnEdgeError(edge)
 
         # Update the outgoing edges and nodes sets.
         self._outgoing_edges.add(edge)
@@ -731,7 +150,7 @@ class Node(Member):  # pylint: disable=abstract-method
         # less than the full incoming nodes recursive set.
         onrs, rt = self._outgoing_nodes_recursive
         if self not in onrs:
-            return EMPTY_FROZEN_SET  # Not a cycle.
+            return Node.__empty_frozen_set  # Not a cycle.
 
         to_visit = set((self,))
         visited = set()
@@ -857,7 +276,7 @@ class Node(Member):  # pylint: disable=abstract-method
         graph.
         """
         if self._deleted:
-            raise DeletedMemberInUseError(self)
+            raise error.DeletedMemberInUseError(self)
 
         if self._incoming_edges_without_deleted is None:
             self._incoming_edges_without_deleted = set(self._incoming_edges)
@@ -874,7 +293,7 @@ class Node(Member):  # pylint: disable=abstract-method
         graph.
         """
         if self._deleted:
-            raise DeletedMemberInUseError(self)
+            raise error.DeletedMemberInUseError(self)
 
         if self._incoming_nodes_without_deleted is None:
             self._incoming_nodes_without_deleted = set(self._incoming_nodes)
@@ -978,7 +397,7 @@ class Node(Member):  # pylint: disable=abstract-method
         more often than the cache of the outgoing_nodes_recursive property.
         """
         if self._deleted:
-            raise DeletedMemberInUseError(self)
+            raise error.DeletedMemberInUseError(self)
         graph_cl = self.graph._mark_deleted_incoming_cache_level  # noqa  # pylint: disable=protected-access
 
         # Stage 1 - Idenitfy all incoming nodes that don't have their result
@@ -1050,7 +469,7 @@ class Node(Member):  # pylint: disable=abstract-method
         graph.
         """
         if self._deleted:
-            raise DeletedMemberInUseError(self)
+            raise error.DeletedMemberInUseError(self)
 
         if self._outgoing_edges_without_deleted is None:
             self._outgoing_edges_without_deleted = set(self._outgoing_edges)
@@ -1067,7 +486,7 @@ class Node(Member):  # pylint: disable=abstract-method
         graph.
         """
         if self._deleted:
-            raise DeletedMemberInUseError(self)
+            raise error.DeletedMemberInUseError(self)
 
         if self._outgoing_nodes_without_deleted is None:
             self._outgoing_nodes_without_deleted = set(self._outgoing_nodes)
@@ -1321,7 +740,7 @@ class Node(Member):  # pylint: disable=abstract-method
         recalculations of this property.
         """
         if self._deleted:
-            raise DeletedMemberInUseError(self)
+            raise error.DeletedMemberInUseError(self)
         onrs, _ = self._outgoing_nodes_recursive  # Throw away return type.
         return onrs
 
@@ -1347,201 +766,3 @@ class Node(Member):  # pylint: disable=abstract-method
         # Finally mark the node itself as deleted.
         self._deleted = True
         self.graph._deleted_nodes |= set((self,))
-
-
-class Edge(Member):
-    """Directed edge graph member."""
-
-    def __init__(self, from_node, to_node):
-        # Check
-        if not from_node.is_node_instance:
-            raise NotANodeError(from_node)
-        if not to_node.is_node_instance:
-            raise NotANodeError(to_node)
-
-        # Private
-        self.__from_node = from_node
-        self.__to_node = to_node
-
-        # Init
-        uid = self._nodes_to_edge_uid(from_node, to_node)
-        super().__init__(uid)
-        from_node._add_outgoing_edge(self)  # pylint: disable=protected-access
-        to_node._add_incoming_edge(self)  # pylint: disable=protected-access
-
-    @abc.abstractmethod
-    def _nodes_to_edge_uid(self, from_node, to_node):
-        """Returns an uid for this directed edge based on the nodes."""
-
-    @property
-    def is_edge_instance(self):
-        """Returns True if this object is an Edge instance.
-
-        Python's isinstance is slow.  To avoid its slowness the is_*_instance
-        properties will be used for the most important classes.
-        """
-        return True
-
-    @property
-    def probability(self):
-        """Returns the probability of this edge. Defaults to 1.0."""
-        if self._deleted:
-            raise DeletedMemberInUseError(self)
-        return 1.0
-
-    @property
-    def from_node(self):
-        """Returns the source (from) node of the edge."""
-        return self.__from_node
-
-    @property
-    def to_node(self):
-        """Returns the destination (to) node of the edge."""
-        return self.__to_node
-
-    def mark_deleted(self):
-        """Marks the edge as deleted. This might also affect its outgoing node.
-
-        As a graph represents a hierarchie the nodes that are above a node also
-        need to be marked as deleted as long as there is no alternative edge
-        that ensures that the hierarchie isn't violated.
-        """
-        if self._deleted:  # pragma: no cover
-            return  # Stop recursion
-
-        # set.add and set.remove is slow. Use |= and -= and the same set as
-        # much as possible.
-        self_set = set((self,))
-
-        # Get all needed data from the edge and then mark it as deleted.
-        graph = self.graph
-        from_node = self.__from_node
-        to_node = self.__to_node
-        probability = self.probability
-        self._deleted = True
-        graph._deleted_edges |= self_set
-
-        # Update/invalidate incoming caches:
-        # ----------------------------------
-
-        # Update incoming edges cache set of the from node.
-        if to_node._incoming_edges_without_deleted is None:  # noqa  # pylint: disable=protected-access
-            to_node._incoming_edges_without_deleted = set(  # noqa  # pylint: disable=protected-access
-                to_node._incoming_edges - self_set)  # noqa  # pylint: disable=protected-access
-        else:
-            to_node._incoming_edges_without_deleted -= self_set  # noqa  # pylint: disable=protected-access
-
-        # Update incoming nodes cache set of the from node.
-        if to_node._incoming_nodes_without_deleted is None:  # noqa  # pylint: disable=protected-access
-            to_node._incoming_nodes_without_deleted = set(  # noqa  # pylint: disable=protected-access
-                to_node._incoming_nodes - set((from_node,)))  # noqa  # pylint: disable=protected-access
-        else:
-            to_node._incoming_nodes_without_deleted -= set((from_node,))  # noqa  # pylint: disable=protected-access
-
-        # The incoming edges and nodes sets without the deleted nodes have been
-        # touched on this node.  Mark this node as touched to reset it on
-        # Graph.unmark_deleted().
-        to_node._incoming_without_deleted_touched = True  # noqa  # pylint: disable=protected-access
-
-        # Increase cache level of the incoming recursive nodes to invalidate
-        # these caches graph-wide.  Once a single cache will be accessed it
-        # uses this information to detect that the cache could be invalid and
-        # then evaluates if the cache is still valid by its built at cache
-        # level and invalidated at cache level fields.  See the
-        # _incoming_nodes_recursive_get_cache method for details.
-        graph._mark_deleted_incoming_cache_level += 1
-        graph_cl = graph._mark_deleted_incoming_cache_level  # noqa  # pylint: disable=protected-access
-        from_node._incoming_nodes_recursive_invalidated_at_cl = graph_cl  # noqa  # pylint: disable=protected-access
-
-        # Update/invalidate outgoing caches:
-        # ----------------------------------
-
-        # The outgoing caches only need to be recalculated if an OrEdge has
-        # been marked as deleted that has other OrEdges in parallel as marking
-        # an edge as deleted only affects the nodes and edges above (incoming).
-        # If an Edge or OrEdge with probability 1.0 will be marked as deleted
-        # then this will also mark its from node and all nodes above as deleted
-        # and hence there is no node or edge above that would need their cache
-        # updated/invalidated and all nodes and edges below it still have a
-        # valid cache.
-        if probability < 1.0:
-            # Update outgoing edges cache set of the from node.
-            # Note: from_node._outgoing_edges_without_deleted is always
-            # initialized because checking the probability initializes it.
-            from_node._outgoing_edges_without_deleted -= self_set  # noqa  # pylint: disable=protected-access
-
-            # Update outgoing nodes cache set of the from node.
-            if from_node._outgoing_nodes_without_deleted is None:  # noqa  # pylint: disable=protected-access
-                from_node._outgoing_nodes_without_deleted = set(  # noqa  # pylint: disable=protected-access
-                    from_node._outgoing_nodes - set((to_node,)))  # noqa  # pylint: disable=protected-access
-            else:
-                from_node._outgoing_nodes_without_deleted -= set((to_node,))  # noqa  # pylint: disable=protected-access
-
-            # The incoming edges and nodes sets without the deleted nodes have
-            # been touched on this node.  Mark this node as touched to reset it
-            # on Graph.unmark_deleted().
-            from_node._outgoing_without_deleted_touched = True  # noqa  # pylint: disable=protected-access
-
-            # Increase cache level of the outgoing recursive nodes to
-            # invalidate these caches graph-wide.  Once a single cache will be
-            # accessed it uses this information to detect that the cache could
-            # be invalid and then evaluates if the cache is still valid by its
-            # built at cache level and invalidated at cache level fields.
-            # see the _outgoing_nodes_recursive_get_cache method for details.
-            graph._mark_deleted_outgoing_cache_level += 1
-            graph_cl = graph._mark_deleted_outgoing_cache_level  # noqa  # pylint: disable=protected-access
-            from_node._outgoing_nodes_recursive_invalidated_at_cl = graph_cl  # noqa  # pylint: disable=protected-access
-
-        # Check if the hierarchy is violated and mark the from-node as deleted
-        # if necessary.
-        if abs(probability - 1.0) < EPSILON:
-            from_node.mark_deleted()
-
-
-class OrEdge(Edge):  # pylint: disable=abstract-method
-    """Represents an or-relationship between edges.
-
-    OrEdge represents edges that are in an or-relationship.  This means that
-    any of the edges in the or-relationship satisfies the hierarchie but it is
-    not important which one.  One can also think of the or-relationship as a
-    single edge with one from-node but multiple to-nodes.  Because of this Edge
-    and OrEdge can't be mixed in the outgoing edges set of a node!
-
-    Edges of type OrEdge have a probability depending on how many edges are
-    in the or-relationship.  If there is one OrEdge then it has a probability
-    of 1/1.  If there are two edges in the or-relationship both have a
-    probability of 1/2.  If there are three edges they all have 1/3 and so on.
-    """
-
-    @property
-    def is_edge_instance(self):
-        """Returns True if this object is an Edge instance.
-
-        Python's isinstance is slow.  To avoid its slowness the is_*_instance
-        properties will be used for the most important classes.
-        """
-        return True
-
-    @property
-    def is_oredge_instance(self):
-        """Returns True if this object is an OrEdge instance.
-
-        Python's isinstance is slow.  To avoid its slowness the is_*_instance
-        properties will be used for the most important classes.
-        """
-        return True
-
-    @property
-    def probability(self):
-        """Returns the probability of this edge.
-
-        The probability is based on the edges in parallel to this edge.  Each
-        one has the same probability to be choosen.
-        """
-        if self._deleted:
-            raise purgatory.graph.DeletedMemberInUseError(self)
-        outgoing_edges = self.from_node.outgoing_edges
-
-        # Division by zero should be impossible as there is always at least
-        # the current edge and hence len(outgoing_edges) should be >= 1.
-        return 1 / len(outgoing_edges)
