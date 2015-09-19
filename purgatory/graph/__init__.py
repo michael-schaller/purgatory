@@ -50,6 +50,7 @@ classes would be in a 'friend' relationship.
 # Graph-specific exceptions.
 from .error import DeletedMemberInUseError
 from .error import EdgeWithZeroProbabilityError
+from .error import GraphError
 from .error import MemberAlreadyRegisteredError
 from .error import NodeIsNotPartOfEdgeError
 from .error import NotANodeError

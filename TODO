@@ -1,4 +1,4 @@
-MS:
+By Michael Schaller:
 * Add license.
 
 * Package the code for Debian/Ubuntu.
@@ -21,14 +21,16 @@ MS:
   Furthermore nose2 can't collect import time coverage data before this commit:
   https://github.com/nose-devs/nose2/commit/79307722e58a6a5c62f1b8b06afd375c58e84a2a
 
-* Automatically generate documentation via Sphinx.
+* Try to get rid of as many no cover statements as possible.
+
+* Automatically generate documentation via Sphinx.  If possible add Sphinx to
+  the linters to flag faulty documentation.
 
 * Add README.md file with instructions for:
   - Build status (Travis)
   - Coverage status (Coveralls)
   - How to use
   - Link to documentation
-  - Link to Slack
   - License
   - Contributing
   - Testing
@@ -38,5 +40,3 @@ MS:
 * Upstream python-apt patches. Once all patches are upstream and no old
   python-apt versions are left that need to be supported remove the mppa
   module.
-
-* Try to get rid of as many no cover statements as possible.

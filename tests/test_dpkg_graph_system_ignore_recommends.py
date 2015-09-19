@@ -7,15 +7,14 @@
 import logging
 
 import purgatory.dpkg_graph
-import purgatory.logging
 
-import tests.common
-import tests.common_dpkg_graph
+from . import common
+from . import common_dpkg_graph
 
 
 class TestSystemIgnoreRecommendsDpkgGraph(
-        tests.common.PurgatoryTestCase,
-        tests.common_dpkg_graph.CommonDpkgGraphTestsMixin):
+        common.PurgatoryTestCase,
+        common_dpkg_graph.CommonDpkgGraphTestsMixin):
     """Tests for purgatory.dpkg_graph with the system's dpkg database."""
 
     def __init__(self, *args, **kwargs):

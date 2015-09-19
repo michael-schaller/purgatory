@@ -8,13 +8,11 @@ import logging
 import unittest
 
 import purgatory.dpkg_graph
-import purgatory.logging
 
-import tests.common
-import tests.common_dpkg_graph
+from . import common
 
 
-class TestSystemDpkgGraph(tests.common.PurgatoryTestCase):
+class TestSystemDpkgGraph(common.PurgatoryTestCase):
     """Profiling for purgatory.dpkg_graph with the system's dpkg database."""
 
     def __init__(self, *args, **kwargs):
@@ -39,12 +37,12 @@ class TestSystemDpkgGraph(tests.common.PurgatoryTestCase):
         logging.debug("DpkgGraph initialized")
 
     @unittest.skip
-    @tests.common.cprofile
+    @common.cprofile
     def test_profile_graph_init(self):
         self.__init_graph()
 
     @unittest.skip
-    @tests.common.cprofile
+    @common.cprofile
     def test_profile_in_cycle(self):
         # Tests the assumption that if a node is in its recursive incoming
         # nodes set that it also has to be in its recursive outgoing nodes set.
@@ -55,7 +53,7 @@ class TestSystemDpkgGraph(tests.common.PurgatoryTestCase):
             self.assertEquals(i, o)
 
     @unittest.skip
-    @tests.common.cprofile
+    @common.cprofile
     def test_profile_leafs(self):
         # Determines all layers of the graph by the help of the
         # Graph.leafs_flat property and Node.mark_deleted() method.
@@ -75,7 +73,7 @@ class TestSystemDpkgGraph(tests.common.PurgatoryTestCase):
                 node.mark_deleted()
 
     @unittest.skip
-    @tests.common.cprofile
+    @common.cprofile
     def test_profile_mark_members_including_obsolete_deleted(self):
         graph = self.graph
 

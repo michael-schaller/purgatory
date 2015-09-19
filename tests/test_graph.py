@@ -10,9 +10,8 @@
 import random
 
 import purgatory.graph
-import purgatory.logging
 
-import tests.common
+from . import common
 
 
 class Graph(purgatory.graph.Graph):
@@ -77,7 +76,7 @@ class OrEdge(purgatory.graph.OrEdge):
         pass  # Custom __str__ implementation.
 
 
-class TestGraph(tests.common.PurgatoryTestCase):
+class TestGraph(common.PurgatoryTestCase):
     """Tests for purgatory.graph."""
 
     def test_empty_graph(self):

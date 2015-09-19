@@ -1,10 +1,9 @@
 """Monkey-patch python-apt.
 
 This module patches python-apt with code that isn't available in the currently
-in use version of python-apt. Every docstring in this module has to either
-specify since which python-apt version the code is supported or has to specify
-a TODO to upstream the code.
+in use version of python-apt.
 """
+
 
 import importlib
 import logging
@@ -12,7 +11,7 @@ import sys
 
 import pkg_resources
 
-import purgatory.mppa_patches as patches
+from . import mppa_patches
 
 
 _APT_MODULE_NAMES = ["apt", "apt_pkg"]
@@ -26,8 +25,9 @@ class ImportedButUnpatchedError(Exception):
         msg = ("The module '%s' is already imported but hasn't been monkey-"
                "patched, yet. This is an indicator that the unpatched version "
                "of the module '%s' is already in use. This is a programming "
-               "error as the '%s' module should always be imported before any "
-               "Apt module.") % (module, module, __name__)
+               "error as mppa.monkey_patch_python_apt() must always be called "
+               "before any python-apt module gets imported."
+               ) % (module, module)
         super().__init__(msg)
 
 
@@ -56,7 +56,7 @@ def _ensure_modules_are_imported():
 def _apply_monkey_patches(modules):
     """Applies the monkey-patches to python-apt."""
     logging.debug("Applying monkey-patches to python-apt ...")
-    patches.add_cache_installed_filter(modules, _PYTHON_APT_VERSION)
+    mppa_patches.add_cache_installed_filter(modules, _PYTHON_APT_VERSION)
 
 
 def _mark_as_monkey_patched(modules):
@@ -66,12 +66,9 @@ def _mark_as_monkey_patched(modules):
     logging.debug("Successfully monkey-patched python-apt")
 
 
-def _monkey_patch_python_apt():
+def monkey_patch_python_apt():
     """Monkey-patch python-apt."""
     _check_already_imported_modules()
     modules = _ensure_modules_are_imported()
     _apply_monkey_patches(modules)
     _mark_as_monkey_patched(modules)
-
-
-_monkey_patch_python_apt()

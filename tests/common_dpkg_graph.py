@@ -13,33 +13,9 @@ import purgatory.dpkg_graph
 
 class CommonDpkgGraphTestsMixin(object):
 
-    def test_add_installed_package_node_after_init(self):
-        graph = self.graph
-        ipns = graph.installed_package_nodes
-        with self.assertRaises(TypeError):
-            ipns["test"] = "test"
-
-    def test_add_installed_dependency_node_after_init(self):
-        graph = self.graph
-        idns = graph.installed_dependency_nodes
-        with self.assertRaises(TypeError):
-            idns["test"] = "test"
-
-    def test_add_dependency_edge_after_init(self):
-        graph = self.graph
-        des = graph.dependency_edges
-        with self.assertRaises(TypeError):
-            des["test"] = "test"
-
-    def test_add_target_edge_after_init(self):
-        graph = self.graph
-        tes = graph.target_edges
-        with self.assertRaises(TypeError):
-            tes["test"] = "test"
-
     def test_dependency_edge_probabilities(self):
         graph = self.graph
-        for edge in graph.dependency_edges.values():
+        for edge in graph.dependency_edges:
             self.assertTrue(
                 abs(edge.probability - 1.0) < purgatory.graph.EPSILON)
 
@@ -47,7 +23,7 @@ class CommonDpkgGraphTestsMixin(object):
         graph = self.graph
 
         # Mark all target edges of the graph as deleted.
-        for edge in graph.target_edges.values():  # Random order!
+        for edge in graph.target_edges:  # Random order!
             if edge.deleted:
                 continue  # Already marked deleted.
             self.assertTrue(edge.probability <= 1.0)
@@ -55,8 +31,7 @@ class CommonDpkgGraphTestsMixin(object):
             edge.mark_deleted()
 
         # All installed dependency nodes must be marked as deleted.
-        for node in graph.installed_dependency_nodes.values():
-            self.assertTrue(node.deleted)
+        self.assertEquals(len(graph.dependency_nodes), 0)
 
     def test_graph_mark_deleted_equals_apt_mark_delete(self):
         # Tests if Node.mark_deleted on a DpkgGraph behaves the sames as
@@ -81,7 +56,8 @@ class CommonDpkgGraphTestsMixin(object):
                 "Graph contains DependencyEdge objects of type Recommends")
 
         count = 0
-        for package_node1 in graph.installed_package_nodes.values():  # Random
+        all_package_nodes = graph.package_nodes
+        for package_node1 in all_package_nodes:  # Random
             count += 1
             if count > 5:
                 return
@@ -98,10 +74,13 @@ class CommonDpkgGraphTestsMixin(object):
                 continue
 
             # Get set of packages that is marked for deletion from the Graph.
-            graph_deleted = set()
-            for package_node2 in graph.installed_package_nodes.values():
-                if package_node2.deleted:
-                    graph_deleted.add(package_node2.package)
+            # Node that graph.deleted_nodes returns a set of package and
+            # dependency nodes that have been marked deleted.  This set will be
+            # filtered to only contain the PackageNode objects and then the
+            # respective apt.Package objects will be tacken for comparison.
+            graph_deleted = {
+                node.package for node in graph.deleted_nodes
+                if isinstance(node, purgatory.dpkg_graph.PackageNode)}
 
             # Get set of package that are marked for change from the Cache.
             cache_changed = set(cache.get_changes())

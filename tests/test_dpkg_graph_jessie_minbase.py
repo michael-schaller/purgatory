@@ -9,15 +9,14 @@ import logging
 import os.path
 
 import purgatory.dpkg_graph
-import purgatory.logging
 
-import tests.common
-import tests.common_dpkg_graph
+from . import common
+from . import common_dpkg_graph
 
 
 class TestJessieDpkgGraph(
-        tests.common.PurgatoryTestCase,
-        tests.common_dpkg_graph.CommonDpkgGraphTestsMixin):
+        common.PurgatoryTestCase,
+        common_dpkg_graph.CommonDpkgGraphTestsMixin):
     """Tests for purgatory.dpkg_graph with Jessie amd64 minbase data."""
 
     def __init__(self, *args, **kwargs):
@@ -43,12 +42,12 @@ class TestJessieDpkgGraph(
         graph = self.graph
         # Installed package nodes count has been taken after the debootstrap
         # run.  See test-data/dpkg/HOWTO for more details.
-        self.assertEquals(len(graph.installed_package_nodes), 101)
+        self.assertEquals(len(graph.package_nodes), 101)
 
         # Installed dependency nodes count has been taken from debug log output
         # during constructor run.  The count also has to be higher if
         # recommends is honored than without recommends.
-        self.assertEquals(len(graph.installed_dependency_nodes), 140)
+        self.assertEquals(len(graph.dependency_nodes), 140)
 
         # Target edges count must be the same as installed dependency nodes
         # count as the minbase setup has only one installed package per
@@ -88,11 +87,10 @@ class TestJessieDpkgGraph(
         # the leaf would be removed including the obsolete nodes.
         leafs = graph.leafs
         for leaf in leafs:
-            # Determine the InstalledPackageNodes that have been marked as
-            # deleted.
+            # Determine the PackageNodes that have been marked as deleted.
             graph.mark_members_including_obsolete_deleted(leaf)
             deleted = [str(node) for node in graph.deleted_nodes if isinstance(
-                node, purgatory.dpkg_graph.InstalledPackageNode)]
+                node, purgatory.dpkg_graph.PackageNode)]
             deleted.sort()
 
             leaf = [str(node) for node in leaf]

@@ -1,10 +1,10 @@
 """Graph-specific exceptions."""
 
 
-import purgatory.error
+from .. import error
 
 
-class GraphError(purgatory.error.PurgatoryError):
+class GraphError(error.PurgatoryError):
     """Base class for all graph related errors."""
 
 
