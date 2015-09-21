@@ -41,6 +41,7 @@ class DpkgGraph(graph.Graph):
 
         # Init
         self.__init_cache()
+        logging.debug("Initializing dpkg graph ...")
         super().__init__()  # Calls _init_nodes and _init_edges.
 
         # Log

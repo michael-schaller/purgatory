@@ -29,8 +29,15 @@ class Edge(member.Member):
         # Init
         uid = self._nodes_to_edge_uid(from_node, to_node)
         super().__init__(uid)
+
         from_node._add_outgoing_edge(self)  # pylint: disable=protected-access
-        to_node._add_incoming_edge(self)  # pylint: disable=protected-access
+        try:
+            to_node._add_incoming_edge(self)  # noqa  # pylint: disable=protected-access
+        except:
+            # Remove the previously added edge from the outgoing edges set
+            # again and then reraise the exception.
+            from_node._outgoing_edges.remove(self)  # noqa  # pylint: disable=protected-access
+            raise
 
     @abc.abstractmethod
     def _nodes_to_edge_uid(self, from_node, to_node):

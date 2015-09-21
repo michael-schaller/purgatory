@@ -33,6 +33,8 @@ mppa.monkey_patch_python_apt()
 from .error import DependencyIsNotInstalledError
 from .error import DpkgGraphError
 from .error import EmptyAptCacheError
+from .error import KeepNodeCanNotBeMarkedDeletedError
+from .error import KeepNodeMustBeLeafError
 from .error import PackageIsNotInstalledError
 from .error import UnsupportedDependencyTypeError
 
@@ -40,5 +42,6 @@ from .error import UnsupportedDependencyTypeError
 from .dependency_edge import DependencyEdge
 from .dependency_node import DependencyNode
 from .dpkg_graph import DpkgGraph
+from .keep_node import KeepNode
 from .package_node import PackageNode
 from .target_edge import TargetEdge
