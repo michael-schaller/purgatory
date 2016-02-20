@@ -33,7 +33,7 @@ class TestJessieDpkgGraph(
             logging.debug(
                 "Initializing DpkgGraph (Jessie amd64 minbase) ...")
             dpkg_db = os.path.abspath(
-                "test-data/dpkg/jessie-amd64-minbase-dpkg-status-db.gz")
+                "../test-data/dpkg/jessie-amd64-minbase-dpkg-status-db.gz")
             self.__graph = purgatory.dpkg_graph.DpkgGraph(dpkg_db=dpkg_db)
             logging.debug("DpkgGraph initialized")
         return self.__graph
@@ -54,7 +54,7 @@ class TestJessieDpkgGraph(
         # dependency - hence the same count.
         self.assertEquals(len(graph.target_edges), 140)
 
-    def test_jesse_layer_count(self):
+    def test_jessie_layer_count(self):
         # Determines all layers of the graph by the help of the
         # Graph.leafs_flat property and Node.mark_deleted() method.
         graph = self.graph
@@ -102,7 +102,8 @@ class TestJessieDpkgGraph(
             # Reset graph.
             graph.unmark_deleted()
 
-        with open("test-data/dpkg/jessie-amd64-minbase-leafs.json", "r") as f:
+        with open(
+                "../test-data/dpkg/jessie-amd64-minbase-leafs.json", "r") as f:
             content = f.read()
         prev_result = json.loads(content)
         self.assertDictEqual(result, prev_result)

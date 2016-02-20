@@ -20,18 +20,18 @@ def cprofile(test):
         prof = cProfile.Profile()
         prof.runcall(test, self)  # Run test under profiler
         stats = pstats.Stats(prof)
-        #stats.strip_dirs()
+        # stats.strip_dirs()
         stats.sort_stats("cumulative")
         stats.print_stats(40)
-        #stats.print_callers(".*<file>.*<function>.*")
-        #stats.print_callees(".*<file>.*<function>.*")
-        #stats.print_callees(".*/graph.py.*__init__.*")
-        #stats.print_callees(".*/graph.py.*outgoing_(nodes|edges).*")
-        #stats.print_callees(
-        #    ".*/dpkg_graph.py.*__init_nodes_and_edges_phase1.*")
-        #stats.print_callees(".*/dpkg_graph.py.*__init__.*")
-        #stats.print_callers(
-        #    ".*/graph.py.*_outgoing_nodes_recursive_get_cache.*")
+        # stats.print_callers(".*<file>.*<function>.*")
+        # stats.print_callees(".*<file>.*<function>.*")
+        # stats.print_callees(".*/graph.py.*__init__.*")
+        # stats.print_callees(".*/graph.py.*outgoing_(nodes|edges).*")
+        # stats.print_callees(
+        #     ".*/dpkg_graph.py.*__init_nodes_and_edges_phase1.*")
+        # stats.print_callees(".*/dpkg_graph.py.*__init__.*")
+        # stats.print_callers(
+        #     ".*/graph.py.*_outgoing_nodes_recursive_get_cache.*")
         self.fail("fail to see profiler stats")
 
     return cprofile_wrapper

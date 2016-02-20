@@ -34,7 +34,7 @@ class TestJessieIgnoreRecommendsDpkgGraph(
                 "Initializing DpkgGraph (Jessie amd64 minbase no recommends) "
                 "...")
             dpkg_db = os.path.abspath(
-                "test-data/dpkg/jessie-amd64-minbase-dpkg-status-db.gz")
+                "../test-data/dpkg/jessie-amd64-minbase-dpkg-status-db.gz")
             self.__graph = purgatory.dpkg_graph.DpkgGraph(
                 ignore_recommends=True, dpkg_db=dpkg_db)
             logging.debug("DpkgGraph initialized")
@@ -104,7 +104,7 @@ class TestJessieIgnoreRecommendsDpkgGraph(
             # Reset graph.
             graph.unmark_deleted()
 
-        with open("test-data/dpkg/jessie-amd64-minbase-leafs-" +
+        with open("../test-data/dpkg/jessie-amd64-minbase-leafs-" +
                   "ignore-recommends.json", "r") as f:
             content = f.read()
         prev_result = json.loads(content)

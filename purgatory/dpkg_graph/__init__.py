@@ -16,17 +16,10 @@ Simplifications:
 
 # Ignore all flake8 issues because F401 issues (unused imports) can't be
 # silenced otherwise.
-# gflake8: noqa
+# flake8: noqa
 
 # Silence unused import warnings.
 # pylint: disable=unused-import
-
-
-# Monkey-patch python-apt.  This is needed in case of older python-apt
-# versions that don't have the needed patches.  This needs to happen before
-# any python-apt module gets imported.
-from . import mppa
-mppa.monkey_patch_python_apt()
 
 
 # DpkgGraph-specific exceptions.

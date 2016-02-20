@@ -49,7 +49,7 @@ class ModFuncFilter(logging.Filter):
         if caller_class_name:
             record.modfunc = ".".join((
                 caller_module_name, caller_class_name, caller_function_name))
-        else:
+        else:  # pragma: no cover
             record.modfunc = ".".join((
                 caller_module_name, caller_function_name))
         return True
