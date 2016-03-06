@@ -42,4 +42,4 @@ class PurgatoryTestCase(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        purgatory.logging.configure_root_logger()
+        purgatory.logging.configure_root_logger_for_debug()

@@ -6,7 +6,6 @@
 
 import json
 import logging
-import os.path
 
 import purgatory.dpkg_graph
 
@@ -32,7 +31,7 @@ class TestJessieDpkgGraph(
         if self.__graph is None:
             logging.debug(
                 "Initializing DpkgGraph (Jessie amd64 minbase) ...")
-            dpkg_db = os.path.abspath(
+            dpkg_db = (
                 "../test-data/dpkg/jessie-amd64-minbase-dpkg-status-db.gz")
             self.__graph = purgatory.dpkg_graph.DpkgGraph(dpkg_db=dpkg_db)
             logging.debug("DpkgGraph initialized")

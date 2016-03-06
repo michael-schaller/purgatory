@@ -1,5 +1,6 @@
 """Setup logging for Purgatory."""
 
+
 import inspect
 import logging
 import sys
@@ -55,14 +56,15 @@ class ModFuncFilter(logging.Filter):
         return True
 
 
-def configure_root_logger():
-    """(Re)configures logging.
+def configure_root_logger_for_debug():
+    """(Re)configures logging for debugging.
 
     As logging hasn't been fully set up at this point this function prints a
     traceback to stderr in case of an exception.
     """
     try:
         root_logger = logging.getLogger()
+        root_logger.setLevel(logging.DEBUG)
 
         # Add the ModFuncFilter if it isn't present yet.
         found = False
@@ -82,3 +84,20 @@ def configure_root_logger():
     except:  # pragma: no cover
         print(traceback.format_exc(), file=sys.stderr)
         raise
+
+
+def init_cli_logging(debug=False):  # pragma: no cover
+    """Initializes logging for the command line interface.
+
+    All log output will be redirected to stderr so that users can easily
+    silence/ignore the log messages by pipping stderr to /dev/null.
+
+    Args:
+        debug: Enabled debug logging. By default False.
+    """
+    logging.basicConfig(
+        format="%(levelname)s: %(message)s",
+        level=logging.INFO,
+        stream=sys.stderr)
+    if debug:
+        configure_root_logger_for_debug()

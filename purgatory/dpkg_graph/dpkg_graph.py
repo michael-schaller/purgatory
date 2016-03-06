@@ -2,6 +2,7 @@
 
 
 import logging
+import os.path
 import types
 
 import apt_pkg
@@ -29,7 +30,9 @@ class DpkgGraph(graph.Graph):
                 the system's dpkg status database file.
         """
         # Private
-        self.__dpkg_db = dpkg_db
+        self.__dpkg_db = None
+        if dpkg_db is not None:
+            self.__dpkg_db = os.path.abspath(dpkg_db)
         self.__cache = None
         self.__package_nodes = {}  # uid:node
         self.__dependency_nodes = {}  # uid:node
@@ -178,6 +181,12 @@ class DpkgGraph(graph.Graph):
         return self.__cache
 
     @property
+    def deleted_package_nodes(self):
+        """Returns a set of the package nodes marked as deleted."""
+        return {node for node in self.__package_nodes.values()
+                if node.deleted}
+
+    @property
     def dependency_nodes(self):
         """Returns a set of the installed dependency nodes.
 
@@ -191,6 +200,8 @@ class DpkgGraph(graph.Graph):
         """Returns a set of the installed package nodes.
 
         The set doesn't include package nodes that have been marked deleted.
+        See the deleted_package_nodes property for a set of package nodes that
+        have been marked deleted.
         """
         return {node for node in self.__package_nodes.values()
                 if not node.deleted}
