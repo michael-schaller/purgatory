@@ -6,6 +6,7 @@ import types
 
 from . import const
 from . import error
+from . import graphviz
 
 
 class Graph(abc.ABC):
@@ -107,6 +108,18 @@ class Graph(abc.ABC):
             Set of edges in the graph.
         """
         return self._edges_set - self._deleted_edges
+
+    @property
+    def graphviz_graph(self):
+        """Returns the GraphViz graph (pygraphviz.AGraph) for this graph.
+
+        This function will reset all graph members marked as deleted and hence
+        the resulting GraphViz graph will contain all graph members.
+
+        Returns:
+            GraphViz graph (pygraphviz.AGraph).
+        """
+        return graphviz.graph_to_agraph(self)
 
     @property
     def leafs(self):

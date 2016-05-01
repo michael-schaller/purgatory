@@ -79,6 +79,11 @@ class Member(abc.ABC):
         return self._deleted
 
     @property
+    def graphviz_attributes(self):  # pragma: no cover
+        """Returns the attributes dict for the respective GraphViz member."""
+        return {}
+
+    @property
     def is_node_instance(self):  # pylint: disable=no-self-use
         """Returns True if this object is a Node instance.
 

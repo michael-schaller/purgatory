@@ -200,18 +200,18 @@ class TestGraph(common.PurgatoryTestCase):
 
             nr, dup = graph._add_node_dedup(n1)
             self.assertFalse(dup)
-            self.assertEquals(id(n1), id(nr))
-            self.assertNotEquals(id(n2), id(nr))
+            self.assertEqual(id(n1), id(nr))
+            self.assertNotEqual(id(n2), id(nr))
 
             nr, dup = graph._add_node_dedup(n1)
             self.assertTrue(dup)
-            self.assertEquals(id(n1), id(nr))  # Dedup because some object
-            self.assertNotEquals(id(n2), id(nr))
+            self.assertEqual(id(n1), id(nr))  # Dedup because some object
+            self.assertNotEqual(id(n2), id(nr))
 
             nr, dup = graph._add_node_dedup(n2)
             self.assertTrue(dup)
-            self.assertEquals(id(n1), id(nr))  # Dedup because same uid
-            self.assertNotEquals(id(n2), id(nr))
+            self.assertEqual(id(n1), id(nr))  # Dedup because same uid
+            self.assertNotEqual(id(n2), id(nr))
 
         Graph(init_nodes_and_edges)
 
@@ -236,12 +236,12 @@ class TestGraph(common.PurgatoryTestCase):
         ies = nt.incoming_edges
         self.assertTrue(e1 in ies)
         self.assertTrue(e2 in ies)
-        self.assertEquals(len(ies), 2)
+        self.assertEqual(len(ies), 2)
 
         ins = nt.incoming_nodes
         self.assertTrue(nf1 in ins)
         self.assertTrue(nf2 in ins)
-        self.assertEquals(len(ins), 2)
+        self.assertEqual(len(ins), 2)
 
     def test_node_incoming_edges_empty(self):
         nt = Node()
@@ -252,7 +252,7 @@ class TestGraph(common.PurgatoryTestCase):
         Graph(init_nodes_and_edges)
 
         ies = nt.incoming_edges
-        self.assertEquals(len(ies), 0)
+        self.assertEqual(len(ies), 0)
 
     def test_deleted_member_in_use_error_incoming_edges(self):
         nt = Node()
@@ -311,12 +311,12 @@ class TestGraph(common.PurgatoryTestCase):
         oes = nf.outgoing_edges
         self.assertTrue(e1 in oes)
         self.assertTrue(e2 in oes)
-        self.assertEquals(len(oes), 2)
+        self.assertEqual(len(oes), 2)
 
         ons = nf.outgoing_nodes
         self.assertTrue(nt1 in ons)
         self.assertTrue(nt2 in ons)
-        self.assertEquals(len(ons), 2)
+        self.assertEqual(len(ons), 2)
 
     def test_node_outgoing_edges_empty(self):
         nf = Node()
@@ -327,7 +327,7 @@ class TestGraph(common.PurgatoryTestCase):
         Graph(init_nodes_and_edges)
 
         oes = nf.outgoing_edges
-        self.assertEquals(len(oes), 0)
+        self.assertEqual(len(oes), 0)
 
     def test_deleted_member_in_use_error_outgoing_edges(self):
         nf = Node()
@@ -539,7 +539,7 @@ class TestGraph(common.PurgatoryTestCase):
                 self._str = "test"
 
         m = TestMember()
-        self.assertEquals(str(m), "test")
+        self.assertEqual(str(m), "test")
 
     def test_not_a_node_error_from_node(self):
         m = Member()
@@ -559,13 +559,13 @@ class TestGraph(common.PurgatoryTestCase):
         n2 = Node("2")
         e = Edge(n1, n2)
 
-        self.assertEquals(n, n1)
-        self.assertNotEquals(n, n2)
-        self.assertNotEquals(n1, n2)
+        self.assertEqual(n, n1)
+        self.assertNotEqual(n, n2)
+        self.assertNotEqual(n1, n2)
 
-        self.assertNotEquals(n, e)
-        self.assertNotEquals(n1, e)
-        self.assertNotEquals(n2, e)
+        self.assertNotEqual(n, e)
+        self.assertNotEqual(n1, e)
+        self.assertNotEqual(n2, e)
 
     def test_graph_nodes_property(self):
         n1 = Node()
@@ -580,7 +580,7 @@ class TestGraph(common.PurgatoryTestCase):
         nodes = graph.nodes
         self.assertTrue(n1 in nodes)
         self.assertTrue(n2 in nodes)
-        self.assertEquals(len(nodes), 2)
+        self.assertEqual(len(nodes), 2)
 
     def test_graph_edges_property(self):
         n1 = Node()
@@ -601,7 +601,7 @@ class TestGraph(common.PurgatoryTestCase):
         edges = graph.edges
         self.assertTrue(e1 in edges)
         self.assertTrue(e2 in edges)
-        self.assertEquals(len(edges), 2)
+        self.assertEqual(len(edges), 2)
 
     def test_graph_nodes_add_node_after_init(self):
 
@@ -654,7 +654,7 @@ class TestGraph(common.PurgatoryTestCase):
             graph._add_node(n)
 
         graph = Graph(init_nodes_and_edges)
-        self.assertEquals(n.graph, graph)
+        self.assertEqual(n.graph, graph)
 
     def test_node_incoming_edges_frozen_after_graph_inited(self):
         nf = Node()
@@ -686,7 +686,7 @@ class TestGraph(common.PurgatoryTestCase):
 
     def test_edge_default_probability(self):
         e = Edge(Node(), Node())
-        self.assertEquals(e.probability, 1.0)
+        self.assertEqual(e.probability, 1.0)
 
     def test_deleted_edge_probability_raises_deleted_member_in_use_error(self):
         nf = Node()
@@ -1064,10 +1064,10 @@ class TestGraph(common.PurgatoryTestCase):
             cr, ct = node._outgoing_nodes_recursive_get_cache(
                 graph_cl=graph_cl)
             if cr is None or exptected_cache_result is None:
-                self.assertEquals(cr, exptected_cache_result)
+                self.assertEqual(cr, exptected_cache_result)
             else:
                 self.assertSetEqual(cr, exptected_cache_result)
-            self.assertEquals(ct, exptected_cache_type)
+            self.assertEqual(ct, exptected_cache_type)
 
         #              /--e2(p=0.33)--> n3 --e5-->\
         # n1 --e1--> n2 --e3(p=0.33)--> n4 --e6--> n6
@@ -1728,17 +1728,17 @@ class TestGraph(common.PurgatoryTestCase):
         # Check leafs (non flat)
         g.unmark_deleted()
         leafs = set(g.leafs)
-        self.assertEquals(len(leafs), 1)
+        self.assertEqual(len(leafs), 1)
         leaf = leafs.pop()
         self.assertSetEqual(leaf, set((n1, n2)))  # Layer 1
         n1.mark_deleted()
         leafs = set(g.leafs)
-        self.assertEquals(len(leafs), 1)
+        self.assertEqual(len(leafs), 1)
         leaf = leafs.pop()
         self.assertSetEqual(leaf, set((n3, n4)))  # Layer 2
         n3.mark_deleted()
         leafs = set(g.leafs)
-        self.assertEquals(len(leafs), 0)  # Nothing left
+        self.assertEqual(len(leafs), 0)  # Nothing left
 
     def test_graph_mark_members_including_obsolete_deleted_docstring(self):
         # Example from the mark_members_including_obsolete_deleted method

@@ -33,8 +33,8 @@ from .error import UnsupportedDependencyTypeError
 
 # DpkgGraph-specific classes.
 from .dependency_edge import DependencyEdge
-from .dependency_node import DependencyNode
 from .dpkg_graph import DpkgGraph
 from .keep_node import KeepNode
 from .package_node import PackageNode
 from .target_edge import TargetEdge
+from .target_versions_node import TargetVersionsNode

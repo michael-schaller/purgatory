@@ -10,6 +10,44 @@ from . import dpkg_graph
 import purgatory.logging
 
 
+def _generate_graph(parsed_args):
+    """Generates a dot file for Graphviz's dot tool representing the graph.
+
+    Args:
+        parsed_args: The parsed command line arguments.
+
+    Returns:
+        Returns the exit code.
+    """
+    logging.info("Initializing dpkg graph ...")
+    graph = dpkg_graph.DpkgGraph(
+        ignore_recommends=parsed_args.ignore_recommends,
+        dpkg_db=parsed_args.dpkg_status_database)
+
+    logging.info("Generating GraphViz graph from the dpkg graph ... "
+                 "(this can take a while)")
+    agraph = graph.graphviz_graph
+
+    logging.debug("Writing dot file '%s' ...", parsed_args.dotfile)
+    agraph.write(parsed_args.dotfile)
+
+    logging.info("To layout/render the graph with GraphViz's dot tool:")
+    logging.info("  dot -T svg -O '%s'", parsed_args.dotfile)
+    logging.info(
+        "Recommended format is 'svg' as it supports tooltip text on mouse "
+        "hover. Typically browsers have good support to view large svg files.")
+    logging.info(
+        "If dot is slow try adding the '-v' option to be able to determine "
+        "which step is slow.")
+    logging.info(
+        "If dot's network simplex algorithm takes a lot of time then try "
+        "adding the '-Gnslimit=#.###' option with the following values: "
+        "0.000, 0.001, 0.01, ... . The higher the value the slower but also "
+        "the better the resulting layout.")
+
+    return 0
+
+
 def _list_leaf_packages(parsed_args):
     """Lists the leaf packages.
 
@@ -33,16 +71,16 @@ def _list_leaf_packages(parsed_args):
     for leaf in leafs:
         # Most leafs consist only of a single PackageNode. The only exception
         # are leaf cycles that consist of several PackageNodes and
-        # DependencyNodes to glue the PackageNodes together. Leaf cycles can
-        # be arbitrarily complex and hence it is impossible to print the
+        # TargetVersionsNodes to glue the PackageNodes together. Leaf cycles
+        # can be arbitrarily complex and hence it is impossible to print the
         # relationship between the nodes in a leaf cycle as text output. So
         # only the PackageNodes are printed.
-        leaf_str = []
+        leaf_str_list = []
         for node in leaf:
             if isinstance(node, dpkg_graph.package_node.PackageNode):
-                leaf_str.append(str(node))
-        leaf_str.sort()
-        leaf_str = " ".join(leaf_str)
+                leaf_str_list.append(str(node))
+        leaf_str_list.sort()
+        leaf_str = " ".join(leaf_str_list)
         leafs_str.append(leaf_str)
     leafs_str.sort()
     for leaf_str in leafs_str:
@@ -136,6 +174,14 @@ def _parse_args(args):
         dest="command", metavar="<command>")
     subparsers.required = True
 
+    # 'graph' subcommand.
+    graph_parser = subparsers.add_parser(
+        "graph", parents=[common_args_parser],
+        help=("generates a dot file for GraphViz's dot tool representing "
+              "Purgatory's internal graph"))
+    graph_parser.add_argument(
+        "dotfile", metavar="<dot file>", help="the path of the dot file")
+
     # 'leafs' subcommand.
     subparsers.add_parser(
         "leafs", parents=[common_args_parser],
@@ -154,6 +200,7 @@ def _parse_args(args):
     # command.
     parsed_args = root_parser.parse_args(args)
     cmd_to_handler = {
+        "graph": _generate_graph,
         "leafs": _list_leaf_packages,
         "purge": _purge_packages,
     }

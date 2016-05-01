@@ -9,14 +9,18 @@ import apt_pkg
 import apt
 
 from . import dependency_edge
-from . import dependency_node
 from . import error
 from . import package_node
 from . import target_edge
+from . import target_versions_node
 
 from .. import graph
 
 
+# TODO(MS): The constructor of the DpkgGraph class shouls also take the
+# system architecture and properly initialize Apt to use that system arch.
+# If the system architecture isn't supplied the DpkgGraph class should properly
+# auto-detect the system architecture.
 class DpkgGraph(graph.Graph):
     """Graph representing installed packages in the dpkg status database."""
 
@@ -35,9 +39,9 @@ class DpkgGraph(graph.Graph):
             self.__dpkg_db = os.path.abspath(dpkg_db)
         self.__cache = None
         self.__package_nodes = {}  # uid:node
-        self.__dependency_nodes = {}  # uid:node
         self.__dependency_edges = {}  # uid:edge
         self.__target_edges = {}  # uid:edge
+        self.__target_versions_nodes = {}  # uid:node
 
         # Protected
         self._ignore_recommends = ignore_recommends
@@ -51,8 +55,8 @@ class DpkgGraph(graph.Graph):
         logging.debug("dpkg graph contains:")
         logging.debug("  Installed package nodes: %d",
                       len(self.__package_nodes))
-        logging.debug("  Installed dependency nodes: %d",
-                      len(self.__dependency_nodes))
+        logging.debug("  Installed target versions nodes: %d",
+                      len(self.__target_versions_nodes))
         logging.debug("  Dependency edges: %d",
                       len(self.__dependency_edges))
         logging.debug("  Target edges: %d",
@@ -125,26 +129,26 @@ class DpkgGraph(graph.Graph):
             for dep in deps:  # apt.package.Dependency
                 # Add installed dependency node.
                 try:
-                    idn = dependency_node.DependencyNode(dep)
+                    itvn = target_versions_node.TargetVersionsNode(dep)
                 except error.DependencyIsNotInstalledError:
                     if dep.rawtype == "Recommends":
                         # Recommended packages don't need to be installed.
                         continue
-                idn, dup = self._add_node_dedup(idn)
+                itvn, dup = self._add_node_dedup(itvn)
                 if not dup:
-                    self.__dependency_nodes[idn.uid] = idn
+                    self.__target_versions_nodes[itvn.uid] = itvn
 
                 # Add dependency edge from the installed package node to the
                 # installed dependency node.
-                de = dependency_edge.DependencyEdge(ipn, idn)
+                de = dependency_edge.DependencyEdge(ipn, itvn, dep)
                 self._add_edge(de)
                 self.__dependency_edges[de.uid] = de
 
         # Freeze all dicts that have been filled so far.
         self.__package_nodes = types.MappingProxyType(
             self.__package_nodes)
-        self.__dependency_nodes = types.MappingProxyType(
-            self.__dependency_nodes)
+        self.__target_versions_nodes = types.MappingProxyType(
+            self.__target_versions_nodes)
         self.__dependency_edges = types.MappingProxyType(
             self.__dependency_edges)
 
@@ -155,15 +159,15 @@ class DpkgGraph(graph.Graph):
         * Target edges (between installed dependency nodes and packages nodes)
         """
         pkg_to_uid = package_node.PackageNode.pkg_to_uid
-        for idn in self.__dependency_nodes.values():
+        for itvn in self.__target_versions_nodes.values():
             # Add target edges from the installed dependency node to the
             # installed package node.
-            for itver in idn.installed_target_versions:
+            for itver in itvn.installed_target_versions:
                 itpkg = itver.package
                 itpkg_uid = pkg_to_uid(itpkg)
                 itpn = self.__package_nodes[itpkg_uid]
 
-                te = target_edge.TargetEdge(idn, itpn)
+                te = target_edge.TargetEdge(itvn, itpn)
                 self._add_edge(te)
                 self.__target_edges[te.uid] = te
 
@@ -185,15 +189,6 @@ class DpkgGraph(graph.Graph):
         """Returns a set of the package nodes marked as deleted."""
         return {node for node in self.__package_nodes.values()
                 if node.deleted}
-
-    @property
-    def dependency_nodes(self):
-        """Returns a set of the installed dependency nodes.
-
-        The set doesn't include dependency nodes that have been marked deleted.
-        """
-        return {node for node in self.__dependency_nodes.values()
-                if not node.deleted}
 
     @property
     def package_nodes(self):
@@ -223,3 +218,13 @@ class DpkgGraph(graph.Graph):
         """
         return {edge for edge in self.__target_edges.values()
                 if not edge.deleted}
+
+    @property
+    def target_versions_nodes(self):
+        """Returns a set of the installed target versions nodes.
+
+        The set doesn't include target versions nodes that have been marked
+        deleted.
+        """
+        return {node for node in self.__target_versions_nodes.values()
+                if not node.deleted}

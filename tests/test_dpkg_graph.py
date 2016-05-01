@@ -24,25 +24,26 @@ class TestDpkgGraph(common.PurgatoryTestCase):
             purgatory.dpkg_graph.PackageIsNotInstalledError,
             purgatory.dpkg_graph.PackageNode, pkg_mock)
 
-    def test_dependency_node_ctor_raise_is_not_installed_error(self):
+    def test_target_versions_node_ctor_raise_is_not_installed_error(self):
         # A dependency that doesn't have installed target versions isn't
         # installed either.
         dep_mock = unittest.mock.Mock(installed_target_versions=set())
         self.assertRaises(
             purgatory.dpkg_graph.DependencyIsNotInstalledError,
-            purgatory.dpkg_graph.DependencyNode, dep_mock)
+            purgatory.dpkg_graph.TargetVersionsNode, dep_mock)
 
     def test_dep_edge_ctor_raise_unsupported_dependency_type_error(self):
         # to_node.dependency.rawtype has to be set to an unsupported dependency
         # type to trigger an UnsupportedDependencyTypeError in the
         # DependencyEdge constructor.
         dep_mock = unittest.mock.Mock(rawtype="Unsupported")
-        to_node_mock = unittest.mock.Mock(dependency=dep_mock)
+        to_node_mock = unittest.mock.Mock()
         from_node_mock = unittest.mock.Mock()
 
         self.assertRaises(
             purgatory.dpkg_graph.UnsupportedDependencyTypeError,
-            purgatory.dpkg_graph.DependencyEdge, from_node_mock, to_node_mock)
+            purgatory.dpkg_graph.DependencyEdge,
+            from_node_mock, to_node_mock, dep_mock)
 
     def test_target_edge_str(self):
         # Target edge with probability of 0.5.  The string representation of
@@ -58,7 +59,7 @@ class TestDpkgGraph(common.PurgatoryTestCase):
 
         target_edge = purgatory.dpkg_graph.TargetEdge(
             from_node_mock, to_node_mock)
-        self.assertEquals(
+        self.assertEqual(
             str(target_edge), "from_node_mock --p=0.500--> to_node_mock")
 
         # Target edge with probability of 0.333.  The string representation of
@@ -72,7 +73,7 @@ class TestDpkgGraph(common.PurgatoryTestCase):
 
         target_edge = purgatory.dpkg_graph.TargetEdge(
             from_node_mock, to_node_mock)
-        self.assertEquals(
+        self.assertEqual(
             str(target_edge), "from_node_mock --p=0.333--> to_node_mock")
 
         # Target edge with probability of 1.0.  The string representation of
@@ -84,7 +85,7 @@ class TestDpkgGraph(common.PurgatoryTestCase):
 
         target_edge = purgatory.dpkg_graph.TargetEdge(
             from_node_mock, to_node_mock)
-        self.assertEquals(
+        self.assertEqual(
             str(target_edge), "from_node_mock --> to_node_mock")
 
     def test_keep_node(self):

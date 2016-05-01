@@ -41,6 +41,16 @@ class PackageNode(graph.Node):
         self._str = self.uid
 
     @property
+    def graphviz_attributes(self):
+        """Returns the attributes dict for the respective GraphViz member."""
+        return {
+            "label": "Package:\n%s" % self.uid,
+            "penwidth": 2.5,
+            "shape": "rectangle",
+            "tooltip": "Package: %s" % self.uid,
+        }
+
+    @property
     def package(self):
         """Returns the apt.package.Package object for this node."""
         return self.__pkg

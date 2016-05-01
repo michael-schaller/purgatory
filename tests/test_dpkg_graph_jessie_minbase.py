@@ -4,9 +4,12 @@
 # pylint: disable=missing-docstring
 
 
+import gzip
 import json
 import logging
+import tempfile
 
+import purgatory.graph.graphviz
 import purgatory.dpkg_graph
 
 from . import common
@@ -31,9 +34,12 @@ class TestJessieDpkgGraph(
         if self.__graph is None:
             logging.debug(
                 "Initializing DpkgGraph (Jessie amd64 minbase) ...")
-            dpkg_db = (
-                "../test-data/dpkg/jessie-amd64-minbase-dpkg-status-db.gz")
-            self.__graph = purgatory.dpkg_graph.DpkgGraph(dpkg_db=dpkg_db)
+            gz = "../test-data/dpkg/jessie-amd64-minbase-dpkg-status-db.gz"
+            tmp = tempfile.NamedTemporaryFile(prefix="dpkg-status-db-")
+            with gzip.open(gz, "rb") as f:
+                tmp.write(f.read())
+            self.__graph = purgatory.dpkg_graph.DpkgGraph(dpkg_db=tmp.name)
+            tmp.close()  # Deletes the temporary file.
             logging.debug("DpkgGraph initialized")
         return self.__graph
 
@@ -41,17 +47,17 @@ class TestJessieDpkgGraph(
         graph = self.graph
         # Installed package nodes count has been taken after the debootstrap
         # run.  See test-data/dpkg/HOWTO for more details.
-        self.assertEquals(len(graph.package_nodes), 101)
+        self.assertEqual(len(graph.package_nodes), 101)
 
-        # Installed dependency nodes count has been taken from debug log output
-        # during constructor run.  The count also has to be higher if
+        # Target versions nodes count has been taken from debug log output
+        # during constructor run.  The count also has to be higher or equals if
         # recommends is honored than without recommends.
-        self.assertEquals(len(graph.dependency_nodes), 140)
+        self.assertEqual(len(graph.target_versions_nodes), 85)
 
-        # Target edges count must be the same as installed dependency nodes
-        # count as the minbase setup has only one installed package per
-        # dependency - hence the same count.
-        self.assertEquals(len(graph.target_edges), 140)
+        # Target edges count must be the same as target versions nodes count as
+        # the minbase setup has only one installed package per dependency -
+        # hence the same count.
+        self.assertEqual(len(graph.target_edges), 85)
 
     def test_jessie_layer_count(self):
         # Determines all layers of the graph by the help of the
@@ -74,9 +80,9 @@ class TestJessieDpkgGraph(
         # Data has been taken from this test after all other tests passed.
         self.assertListEqual(
             layer_counts,
-            [16, 14, 7, 10, 4, 15, 8, 17, 8, 15, 17, 8, 10, 7, 3, 2, 1, 1, 1,
-             1, 3, 3, 10, 6, 1, 1, 2, 5, 5, 4, 1, 1, 3, 1, 1, 1, 5, 4, 3, 2, 2,
-             2, 1, 7, 1, 1])
+            [16, 7, 7, 4, 4, 8, 8, 10, 7, 10, 11, 8, 7, 7, 2, 2, 1, 1, 1, 1, 3,
+             3, 6, 6, 1, 1, 5, 4, 4, 2, 1, 1, 1, 1, 1, 4, 4, 2, 2, 2, 2, 6, 1,
+             1])
 
     def test_jessie_mark_members_including_obsolete_deleted(self):
         graph = self.graph
@@ -106,3 +112,6 @@ class TestJessieDpkgGraph(
             content = f.read()
         prev_result = json.loads(content)
         self.assertDictEqual(result, prev_result)
+
+    def test_graphviz(self):
+        self.graph.graphviz_graph  # pylint: disable=pointless-statement

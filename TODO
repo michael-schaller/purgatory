@@ -5,18 +5,16 @@ By Michael Schaller:
       python3,
       python3-apt,
       python3-flake8,
+      python3-pygraphviz,
       python3-nose,
       python3-nose-cov
   - Dependencies:
       python3,
       python3-apt
+  - Recommends:
+      python3-pygraphviz
   - Entry points:
       purgatory.cli.main()
-
-* Try to get rid of as many no cover statements as possible.
-
-* Automatically generate documentation via Sphinx.  If possible add Sphinx to
-  the linters to flag faulty documentation.
 
 * Add README.md file with instructions for:
   - Build status (Travis)
@@ -31,6 +29,13 @@ By Michael Schaller:
   - Building
 
 * Add man page based on the README.md file.
+
+* Fix or remove all the TODOs in the code.
+
+* Try to get rid of as many no cover statements as possible.
+
+* Automatically generate documentation via Sphinx.  If possible add Sphinx to
+  the linters to flag faulty documentation.
 
 * Improve command line interface:
   - leafs command:
@@ -53,3 +58,27 @@ By Michael Schaller:
     + Add option to only remove the packages instead of purging them.
 
   - Add graph command to render (parts of) the graph with the help of GraphViz.
+    + Profile the priliminary code for the graph generation. Especially the
+      calls of mark_deleted seem to take an unusual high amount of time. I guess
+      mark deleted hasn't been profiled much yet.
+    + Add command to only generate a graph of the leaf clusters and maybe the
+      next clusters below the leaf clusters.
+    + Add command to only generate a graph of the purge operation. This graph
+      should show the packages that need to removed because the dependencies are
+      no longer satisfied in a cluster, the packages that are obsoleted by the
+      purge in a cluster and then the clusters below in a graph.
+
+  - Try to implement a reinstall command that gives a single apt command to run
+    after a reinstall.  This apt command would install all the leaf packages and
+    prevent all the missing recommended packages from being installed.  Running
+    this apt command after a minimal install would then restore the package
+    state.
+
+* The Graph class contains a lot of caches that are currently constantly
+  updated.  The Graph class should be immutable after initialization and then
+  there should be a SubGraph class that only "contains" a subset of the original
+  graph (Graph - deleted packages).  The SubGraph class would be implemented as
+  a view of the original Graph without the deleted packages.  This would make
+  cache management a lot easier as both Graph and SubGraph would be immutable
+  and a SubGraph would be created whenever needed.  Implementing this would be a
+  lot of work though as the Graph class would need a complete rewrite.

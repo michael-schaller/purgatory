@@ -86,7 +86,7 @@ class Node(member.Member):  # pylint: disable=abstract-method
             # No edges in the outgoing edges set, yet.  Determine the edge type
             # and set the self._outgoing_or_edges variable for future rounds to
             # know which edge type is accepted.
-            if edge.is_oredge_instance:
+            if edge.is_oredge_instance:  # noqa  # pylint: disable=simplifiable-if-statement
                 self._outgoing_or_edges = True
             else:
                 self._outgoing_or_edges = False
@@ -166,7 +166,7 @@ class Node(member.Member):  # pylint: disable=abstract-method
             cycle_nodes |= incoming_cycle_nodes
             to_visit |= incoming_cycle_nodes
             to_visit -= visited
-        cycle_nodes = frozenset(cycle_nodes)
+        cycle_nodes = frozenset(cycle_nodes)  # noqa  # pylint: disable=redefined-variable-type
 
         # Determine if this cycle is static.  A cycle is static if and only if
         # it has no edges or type OrEdge.  As edges of type OrEdge are
@@ -375,7 +375,7 @@ class Node(member.Member):  # pylint: disable=abstract-method
                 to_visit |= set((cn,))  # Faster than to_visit.add(cn).
 
         # Cache the result.
-        incoming_nodes_recursive = frozenset(incoming_nodes_recursive)
+        incoming_nodes_recursive = frozenset(incoming_nodes_recursive)  # noqa  # pylint: disable=redefined-variable-type
         self._incoming_nodes_recursive_cache = incoming_nodes_recursive
         self._incoming_nodes_recursive_cache_level = graph_cl
         self._incoming_nodes_recursive_built_at_cl = graph_cl

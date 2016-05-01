@@ -31,7 +31,7 @@ class CommonDpkgGraphTestsMixin(object):
             edge.mark_deleted()
 
         # All installed dependency nodes must be marked as deleted.
-        self.assertEquals(len(graph.dependency_nodes), 0)
+        self.assertEquals(len(graph.target_versions_nodes), 0)
 
     def test_graph_mark_deleted_equals_apt_mark_delete(self):
         # Tests if Node.mark_deleted on a DpkgGraph behaves the sames as

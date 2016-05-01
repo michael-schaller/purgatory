@@ -41,7 +41,7 @@ classes would be in a 'friend' relationship.
 
 # Ignore all flake8 issues because F401 issues (unused imports) can't be
 # silenced otherwise.
-# gflake8: noqa
+# flake8: noqa
 
 # Silence unused import warnings.
 # pylint: disable=unused-import

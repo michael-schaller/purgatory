@@ -50,7 +50,7 @@ class TestSystemDpkgGraph(common.PurgatoryTestCase):
         for node in self.graph.nodes.values():
             i = node in node.incoming_nodes_recursive
             o = node in node.outgoing_nodes_recursive
-            self.assertEquals(i, o)
+            self.assertEqual(i, o)
 
     @unittest.skip
     @common.cprofile
@@ -84,3 +84,8 @@ class TestSystemDpkgGraph(common.PurgatoryTestCase):
             graph.mark_members_including_obsolete_deleted(leaf)
             graph.deleted_nodes  # To gather details about the deleted nodes.  # noqa  # pylint: disable=pointless-statement
             graph.unmark_deleted()  # Reset graph.
+
+    @unittest.skip
+    @common.cprofile
+    def test_profile_graphviz_graph(self):
+        self.graph.graphviz_graph  # pylint: disable=pointless-statement
